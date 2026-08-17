@@ -1,0 +1,448 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <title>Despensei</title>
+
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#3e5b35">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="icon" href="icons/icon-192.png">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Nunito+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: { sans: ['Nunito Sans', 'system-ui', 'sans-serif'] },
+          colors: {
+            sage: {
+              50: '#f4f7f1', 100: '#e5eddd', 200: '#c9dcc0', 300: '#a7c69b',
+              400: '#82ac72', 500: '#638f54', 600: '#4d7241', 700: '#3e5b35',
+              800: '#33492c', 900: '#2b3d25'
+            },
+            sand: {
+              50: '#fbf8f4', 100: '#f5efe4', 200: '#ebdfc9', 300: '#ddc9a3',
+              400: '#cdb07c', 500: '#bd9860', 600: '#a37e4c', 700: '#87663f',
+              800: '#6e5337', 900: '#5a4530'
+            },
+            terracotta: {
+              50: '#fdf3f0', 100: '#fbe3db', 200: '#f5c4b4', 300: '#eb9d85',
+              400: '#dd7455', 500: '#c85c3c', 600: '#aa462c', 700: '#8a3925'
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    html, body { font-family: 'Nunito Sans', system-ui, sans-serif; background: #fbf8f4; }
+    * { -webkit-tap-highlight-color: transparent; }
+    ::-webkit-scrollbar { display: none; }
+    .screen { display: none; }
+    .screen.active { display: block; }
+    .tab-btn.active .tab-icon { transform: translateY(-2px); color: #3e5b35; }
+    .tab-btn.active .tab-label { color: #3e5b35; font-weight: 700; }
+    .tab-btn.active .tab-dot { opacity: 1; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .spinner { animation: spin 0.7s linear infinite; }
+    @keyframes toast-in { from { opacity:0; transform: translate(-50%, 8px); } to { opacity:1; transform: translate(-50%, 0); } }
+    .toast { animation: toast-in 0.25s ease-out; }
+    .stepper-btn { -webkit-user-select:none; user-select:none; touch-action: manipulation; }
+    details > summary { list-style: none; }
+    details > summary::-webkit-details-marker { display: none; }
+    details[open] .chev { transform: rotate(180deg); }
+  </style>
+</head>
+<body class="min-h-screen text-sand-900">
+
+  <!-- ===================== TELA DE LOGIN ===================== -->
+  <div id="view-login" class="min-h-screen flex flex-col items-center justify-center px-6 text-center">
+    <img src="icons/icon-192.png" alt="Despensei" style="width:96px;height:96px;" class="mb-4 rounded-2xl shadow-sm">
+    <h1 class="text-2xl font-extrabold text-sage-800 tracking-tight">Despensei</h1>
+    <p class="text-sm text-sand-600 mt-1 mb-8">já pensei em tudo</p>
+
+    <div id="google-signin-button"></div>
+
+    <p id="login-erro-config" class="hidden mt-6 text-xs text-terracotta-600 bg-terracotta-50 border border-terracotta-200 rounded-xl px-4 py-3 max-w-xs">
+      Configuração pendente: o GOOGLE_CLIENT_ID ainda não foi preenchido em <code>web/auth.js</code>.
+    </p>
+  </div>
+
+  <!-- ===================== TELA DE FAMÍLIA (criar / entrar) ===================== -->
+  <div id="view-familia" class="hidden min-h-screen flex flex-col items-center justify-center px-6">
+    <div class="w-full max-w-xs">
+      <div class="text-center mb-6">
+        <p class="text-4xl mb-2">🏠</p>
+        <h2 class="text-lg font-extrabold text-sand-900">Bem-vindo(a) ao Despensei!</h2>
+        <p class="text-sm text-sand-600 mt-1">Crie a despensa da sua casa ou entre em uma família já existente.</p>
+      </div>
+
+      <div class="bg-white rounded-2xl p-4 shadow-sm border border-sand-100 mb-4">
+        <h3 class="text-sm font-extrabold text-sage-800 mb-2">Criar minha família</h3>
+        <input id="familia-nome" type="text" placeholder="Ex: Casa da Daiane"
+          class="w-full border border-sand-200 rounded-xl px-3 py-2.5 text-sm bg-sand-50 mb-2 focus:outline-none focus:ring-2 focus:ring-sage-400">
+        <button onclick="DespenseiApp.criarFamilia()" class="w-full bg-sage-600 hover:bg-sage-700 text-white font-bold rounded-xl py-2.5 text-sm active:scale-[0.98] transition">
+          Criar família
+        </button>
+      </div>
+
+      <div class="bg-white rounded-2xl p-4 shadow-sm border border-sand-100">
+        <h3 class="text-sm font-extrabold text-sage-800 mb-2">Já tenho um código de convite</h3>
+        <input id="familia-codigo" type="text" placeholder="Ex: A3F9K2" maxlength="6" style="text-transform:uppercase;"
+          class="w-full border border-sand-200 rounded-xl px-3 py-2.5 text-sm bg-sand-50 mb-2 focus:outline-none focus:ring-2 focus:ring-sage-400">
+        <button onclick="DespenseiApp.entrarComCodigo()" class="w-full bg-sand-100 hover:bg-sand-200 text-sand-800 font-bold rounded-xl py-2.5 text-sm active:scale-[0.98] transition">
+          Entrar na família
+        </button>
+      </div>
+
+      <button onclick="DespenseiAuth.logout()" class="w-full text-xs text-sand-400 mt-5">Sair / trocar de conta</button>
+    </div>
+  </div>
+
+  <!-- ===================== APP (Despensa / Lista / Carrinho / Catálogo) ===================== -->
+  <div id="view-app" class="hidden">
+
+    <!-- HEADER -->
+    <header class="sticky top-0 z-30 bg-sand-50/95 backdrop-blur border-b border-sage-100">
+      <div class="max-w-md mx-auto flex items-center gap-2.5 px-4 py-3">
+        <img src="icons/icon-192.png" alt="Despensei" style="height:36px;width:36px;display:block;border-radius:8px;">
+        <div class="leading-tight">
+          <h1 class="text-lg font-extrabold text-sage-800 tracking-tight">Despensei</h1>
+          <p id="header-familia-nome" class="text-[11px] text-sand-600 -mt-0.5">já pensei em tudo</p>
+        </div>
+      </div>
+    </header>
+
+    <!-- CONTEÚDO -->
+    <main class="max-w-md mx-auto px-4 pt-4 pb-28">
+
+      <!-- ---------- DESPENSA ---------- -->
+      <section id="screen-despensa" class="screen active">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-xl font-extrabold text-sand-900 flex items-center gap-2">
+            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="width:22px;height:22px;color:#3e5b35;flex-shrink:0;">
+              <rect x="8.5" y="2.5" width="7" height="2.6" rx="1" stroke="currentColor" stroke-width="1.7"/>
+              <path d="M7.5 5.6h9v1.8h-9z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>
+              <path d="M6.3 7.4h11.4l.7 11.4a2.6 2.6 0 0 1-2.6 2.7H8.2a2.6 2.6 0 0 1-2.6-2.7l.7-11.4z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>
+              <path d="M6.8 13.2h10.4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+            </svg>
+            Minha Despensa
+          </h2>
+        </div>
+        <div id="despensa-lista" class="space-y-5"></div>
+      </section>
+
+      <!-- ---------- LISTA DE COMPRAS ---------- -->
+      <section id="screen-lista" class="screen">
+        <div class="flex items-center justify-between mb-1">
+          <h2 class="text-xl font-extrabold text-sand-900 flex items-center gap-2">
+            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="width:22px;height:22px;color:#3e5b35;flex-shrink:0;">
+              <rect x="3.5" y="3.5" width="17" height="17" rx="3" stroke="currentColor" stroke-width="1.7"/>
+              <rect x="6.3" y="6.8" width="3.2" height="3.2" rx="0.8" stroke="currentColor" stroke-width="1.5"/>
+              <path d="M6.9 8.4l.7.7 1.3-1.4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M11.6 8.4h6.1" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+              <rect x="6.3" y="13" width="3.2" height="3.2" rx="0.8" stroke="currentColor" stroke-width="1.5"/>
+              <path d="M11.6 14.6h6.1" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+            </svg>
+            Lista de Compras
+          </h2>
+        </div>
+        <p class="text-xs text-sand-600 mb-3">Gerada automaticamente com itens no fim do estoque — mais o que você adicionar na mão.</p>
+
+        <div class="bg-white rounded-2xl p-3 mb-4 shadow-sm border border-sand-100 flex gap-2">
+          <input id="novo-item-avulso" type="text" placeholder="Item avulso (não vai pro catálogo)…"
+            class="flex-1 min-w-0 border border-sand-200 rounded-xl px-3 py-2.5 text-sm bg-sand-50 focus:outline-none focus:ring-2 focus:ring-sage-400">
+          <button onclick="DespenseiApp.adicionarItemAvulso()" class="shrink-0 bg-sage-100 text-sage-700 font-bold rounded-xl px-3.5 py-2.5 text-sm active:scale-95 transition">+ Avulso</button>
+        </div>
+
+        <div id="lista-compras" class="space-y-5"></div>
+      </section>
+
+      <!-- ---------- CARRINHO ---------- -->
+      <section id="screen-carrinho" class="screen">
+        <h2 class="text-xl font-extrabold text-sand-900 mb-3 flex items-center gap-2">
+          <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="width:22px;height:22px;color:#3e5b35;flex-shrink:0;">
+            <path d="M3 4h2.2l1 2.2M6.2 6.2l1.8 8.6a1.8 1.8 0 0 0 1.8 1.4h7.6a1.8 1.8 0 0 0 1.8-1.4l1.3-6H6.2z" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+            <circle cx="10" cy="19.5" r="1.4" stroke="currentColor" stroke-width="1.5"/>
+            <circle cx="17" cy="19.5" r="1.4" stroke="currentColor" stroke-width="1.5"/>
+          </svg>
+          Carrinho
+        </h2>
+
+        <div class="bg-sage-700 text-white rounded-2xl px-4 py-3 mb-4 flex items-center justify-between shadow-sm">
+          <span class="text-sm font-semibold opacity-90">Total do Carrinho</span>
+          <span id="carrinho-total" class="text-2xl font-extrabold">R$ 0,00</span>
+        </div>
+
+        <div class="bg-white rounded-2xl p-3 mb-4 shadow-sm border border-sand-100">
+          <label class="block text-xs font-bold text-sand-700 mb-1">Estabelecimento</label>
+          <div class="flex gap-2">
+            <select id="select-estabelecimento" class="flex-1 min-w-0 border border-sand-200 rounded-xl px-3 py-2.5 text-sm bg-sand-50 focus:outline-none focus:ring-2 focus:ring-sage-400"></select>
+            <button onclick="DespenseiApp.promptNovoEstabelecimento()" class="shrink-0 bg-sage-100 text-sage-700 font-bold rounded-xl px-3.5 py-2.5 text-sm active:scale-95 transition">+ Novo</button>
+          </div>
+        </div>
+
+        <div class="bg-white rounded-2xl p-3.5 mb-4 shadow-sm border border-sand-100 space-y-3">
+          <div class="flex items-center justify-between">
+            <label class="block text-xs font-bold text-sand-700">Produto</label>
+            <button onclick="DespenseiApp.abrirScanner()" class="text-xs font-bold text-sage-700 bg-sage-50 rounded-lg px-2.5 py-1.5 active:scale-95 transition">📷 Escanear código</button>
+          </div>
+          <select id="select-produto" onchange="DespenseiApp.aoSelecionarProduto()" class="w-full border border-sand-200 rounded-xl px-3 py-2.5 text-sm bg-sand-50 focus:outline-none focus:ring-2 focus:ring-sage-400">
+            <option value="">Selecione um item…</option>
+          </select>
+          <button id="btn-vincular-codigo" onclick="DespenseiApp.vincularCodigoPendente()" class="hidden w-full bg-terracotta-50 text-terracotta-700 font-bold rounded-xl py-2 text-xs active:scale-[0.98] transition">
+            🔗 Vincular código escaneado a este produto
+          </button>
+
+          <div class="flex gap-3">
+            <div class="flex-1">
+              <label class="block text-xs font-bold text-sand-700 mb-1">Preço unitário</label>
+              <div class="flex items-center border border-sand-200 rounded-xl bg-sand-50 px-3">
+                <span class="text-sand-500 text-sm">R$</span>
+                <input id="input-preco" type="number" inputmode="decimal" step="0.01" min="0" placeholder="0,00" oninput="DespenseiApp.atualizarIndicadorPreco()"
+                  class="w-full bg-transparent py-2.5 pl-1 text-sm focus:outline-none">
+              </div>
+              <p id="indicador-preco" class="text-[11px] mt-1"></p>
+            </div>
+            <div class="w-32">
+              <label class="block text-xs font-bold text-sand-700 mb-1">Qtd.</label>
+              <div class="flex items-center border border-sand-200 rounded-xl bg-sand-50 overflow-hidden">
+                <button onclick="DespenseiApp.ajustarQtdForm(-1)" class="stepper-btn w-9 h-10 text-sage-700 font-bold text-lg active:bg-sage-100">–</button>
+                <input id="input-qtd" type="number" min="1" value="1" class="w-full text-center bg-transparent text-sm font-bold focus:outline-none">
+                <button onclick="DespenseiApp.ajustarQtdForm(1)" class="stepper-btn w-9 h-10 text-sage-700 font-bold text-lg active:bg-sage-100">+</button>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-xs font-bold text-sand-700 mb-1">Marca <span class="font-normal text-sand-400">(opcional)</span></label>
+            <input id="input-marca" type="text" placeholder="Ex: Heineken, Omo, Nestlé…"
+              class="w-full border border-sand-200 rounded-xl px-3 py-2.5 text-sm bg-sand-50 focus:outline-none focus:ring-2 focus:ring-sage-400">
+          </div>
+
+          <button onclick="DespenseiApp.adicionarItemCarrinho()" class="w-full bg-sage-600 hover:bg-sage-700 text-white font-bold rounded-xl py-3 text-sm active:scale-[0.98] transition">
+            + Adicionar ao Carrinho
+          </button>
+        </div>
+
+        <div id="carrinho-itens" class="space-y-2 mb-4"></div>
+
+        <button onclick="DespenseiApp.finalizarCompra()" id="btn-finalizar"
+          class="w-full bg-terracotta-500 hover:bg-terracotta-600 text-white font-extrabold rounded-2xl py-4 text-base shadow-md active:scale-[0.98] transition disabled:opacity-40">
+          Finalizar Compra
+        </button>
+      </section>
+
+      <!-- ---------- CATÁLOGO & CONFIGURAÇÕES ---------- -->
+      <section id="screen-config" class="screen">
+        <h2 class="text-xl font-extrabold text-sand-900 mb-4 flex items-center gap-2">
+          <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="width:22px;height:22px;color:#3e5b35;flex-shrink:0;">
+            <path d="M12 5.5c-1.6-1.3-3.7-1.8-6-1.8-.6 0-1 .4-1 1v11.6c0 .6.4 1 1 1 2.3 0 4.4.5 6 1.8 1.6-1.3 3.7-1.8 6-1.8.6 0 1-.4 1-1V4.7c0-.6-.4-1-1-1-2.3 0-4.4.5-6 1.8z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+            <path d="M12 5.5v13" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+            <path d="M7.3 8h2.8M7.3 10.6h2.8M14 8h2.8M14 10.6h2.8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+          </svg>
+          Meu Catálogo &amp; Configurações
+        </h2>
+
+        <!-- Minha família -->
+        <div class="bg-white rounded-2xl p-3.5 mb-5 shadow-sm border border-sand-100">
+          <h3 class="text-sm font-extrabold text-sage-800 mb-2">👪 Minha família</h3>
+          <p class="text-sm text-sand-800 font-semibold" id="familia-info-nome">—</p>
+          <p class="text-xs text-sand-600 mt-1">Código de convite: <b id="familia-info-codigo" class="text-sage-700 tracking-widest">—</b></p>
+          <div id="familia-info-membros" class="mt-3 space-y-1"></div>
+        </div>
+
+        <!-- WhatsApp -->
+        <div class="bg-white rounded-2xl p-3.5 mb-5 shadow-sm border border-sand-100">
+          <h3 class="text-sm font-extrabold text-sage-800 mb-2">📱 Aviso por WhatsApp</h3>
+          <p class="text-xs text-sand-600 mb-2">Receba um aviso quando alguém da família comprar ou adicionar um item à lista.</p>
+          <div class="flex gap-2">
+            <input id="meu-telefone" type="tel" placeholder="Ex: 5532999999999 (DDI+DDD+número)"
+              class="flex-1 min-w-0 border border-sand-200 rounded-xl px-3 py-2.5 text-sm bg-sand-50 focus:outline-none focus:ring-2 focus:ring-sage-400">
+            <button onclick="DespenseiApp.salvarTelefone()" class="shrink-0 bg-sage-100 text-sage-700 font-bold rounded-xl px-3.5 py-2.5 text-sm active:scale-95 transition">Salvar</button>
+          </div>
+        </div>
+
+        <!-- Adicionar item personalizado -->
+        <div class="bg-white rounded-2xl p-3.5 mb-5 shadow-sm border border-sand-100">
+          <h3 class="text-sm font-extrabold text-sage-800 mb-2">Adicionar item personalizado</h3>
+          <div class="space-y-2">
+            <input id="novo-produto-nome" type="text" placeholder="Nome do produto"
+              class="w-full border border-sand-200 rounded-xl px-3 py-2.5 text-sm bg-sand-50 focus:outline-none focus:ring-2 focus:ring-sage-400">
+            <select id="novo-produto-categoria" class="w-full border border-sand-200 rounded-xl px-3 py-2.5 text-sm bg-sand-50 focus:outline-none focus:ring-2 focus:ring-sage-400"></select>
+            <button onclick="DespenseiApp.adicionarProdutoPersonalizado()" class="w-full bg-sage-600 hover:bg-sage-700 text-white font-bold rounded-xl py-2.5 text-sm active:scale-[0.98] transition">
+              Adicionar ao catálogo
+            </button>
+          </div>
+        </div>
+
+        <!-- Nova categoria -->
+        <div class="bg-white rounded-2xl p-3.5 mb-5 shadow-sm border border-sand-100">
+          <h3 class="text-sm font-extrabold text-sage-800 mb-2">Nova categoria</h3>
+          <div class="flex gap-2">
+            <input id="nova-categoria-nome" type="text" placeholder="Ex: Congelados"
+              class="flex-1 min-w-0 border border-sand-200 rounded-xl px-3 py-2.5 text-sm bg-sand-50 focus:outline-none focus:ring-2 focus:ring-sage-400">
+            <button onclick="DespenseiApp.adicionarCategoria()" class="shrink-0 bg-sage-100 text-sage-700 font-bold rounded-xl px-3.5 py-2.5 text-sm active:scale-95 transition">Adicionar</button>
+          </div>
+        </div>
+
+        <!-- Ativar itens do catálogo -->
+        <div class="mb-5">
+          <div class="flex items-center justify-between mb-2">
+            <h3 class="text-sm font-extrabold text-sage-800">Personalize sua despensa</h3>
+          </div>
+          <input id="filtro-catalogo" oninput="DespenseiApp.renderCatalogo()" type="text" placeholder="🔍 Buscar produto…"
+            class="w-full border border-sand-200 rounded-xl px-3 py-2.5 text-sm bg-white mb-3 focus:outline-none focus:ring-2 focus:ring-sage-400">
+          <div id="catalogo-lista" class="space-y-3"></div>
+        </div>
+
+        <!-- Estabelecimentos -->
+        <div class="bg-white rounded-2xl p-3.5 mb-5 shadow-sm border border-sand-100">
+          <h3 class="text-sm font-extrabold text-sage-800 mb-2">Estabelecimentos</h3>
+          <div id="estabelecimentos-lista" class="space-y-1.5 mb-3"></div>
+          <div class="flex gap-2">
+            <input id="novo-estabelecimento-nome" type="text" placeholder="Novo estabelecimento"
+              class="flex-1 min-w-0 border border-sand-200 rounded-xl px-3 py-2.5 text-sm bg-sand-50 focus:outline-none focus:ring-2 focus:ring-sage-400">
+            <button onclick="DespenseiApp.adicionarEstabelecimentoForm()" class="shrink-0 bg-sage-100 text-sage-700 font-bold rounded-xl px-3.5 py-2.5 text-sm active:scale-95 transition">Adicionar</button>
+          </div>
+        </div>
+
+        <button onclick="DespenseiAuth.logout()" class="w-full text-xs text-terracotta-500 font-bold py-3">Sair da conta</button>
+      </section>
+
+    </main>
+
+    <!-- ===================== NAV INFERIOR ===================== -->
+    <nav class="fixed bottom-0 left-0 right-0 z-30 bg-white border-t border-sand-200 shadow-[0_-2px_10px_rgba(0,0,0,0.04)]">
+      <div class="max-w-md mx-auto grid grid-cols-4">
+        <button class="tab-btn active flex flex-col items-center gap-0.5 py-2.5" data-tab="despensa" onclick="DespenseiApp.switchTab('despensa')">
+          <span class="tab-icon w-6 h-6 text-sand-400 transition-transform">
+            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:100%;">
+              <rect x="8.5" y="2.5" width="7" height="2.6" rx="1" stroke="currentColor" stroke-width="1.7"/>
+              <path d="M7.5 5.6h9v1.8h-9z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>
+              <path d="M6.3 7.4h11.4l.7 11.4a2.6 2.6 0 0 1-2.6 2.7H8.2a2.6 2.6 0 0 1-2.6-2.7l.7-11.4z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>
+              <path d="M6.8 13.2h10.4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+            </svg>
+          </span>
+          <span class="tab-label text-[11px] text-sand-500">Despensa</span>
+          <span class="tab-dot w-1 h-1 rounded-full bg-sage-600 opacity-0"></span>
+        </button>
+        <button class="tab-btn flex flex-col items-center gap-0.5 py-2.5" data-tab="lista" onclick="DespenseiApp.switchTab('lista')">
+          <span class="tab-icon w-6 h-6 text-sand-400 transition-transform relative inline-block">
+            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:100%;">
+              <rect x="3.5" y="3.5" width="17" height="17" rx="3" stroke="currentColor" stroke-width="1.7"/>
+              <rect x="6.3" y="6.8" width="3.2" height="3.2" rx="0.8" stroke="currentColor" stroke-width="1.5"/>
+              <path d="M6.9 8.4l.7.7 1.3-1.4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M11.6 8.4h6.1" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+              <rect x="6.3" y="13" width="3.2" height="3.2" rx="0.8" stroke="currentColor" stroke-width="1.5"/>
+              <path d="M11.6 14.6h6.1" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+            </svg>
+            <span id="badge-lista" class="hidden absolute -top-1 -right-2 bg-terracotta-500 text-white text-[9px] font-bold rounded-full min-w-[15px] h-[15px] flex items-center justify-center px-0.5"></span>
+          </span>
+          <span class="tab-label text-[11px] text-sand-500">Lista</span>
+          <span class="tab-dot w-1 h-1 rounded-full bg-sage-600 opacity-0"></span>
+        </button>
+        <button class="tab-btn flex flex-col items-center gap-0.5 py-2.5" data-tab="carrinho" onclick="DespenseiApp.switchTab('carrinho')">
+          <span class="tab-icon w-6 h-6 text-sand-400 transition-transform relative inline-block">
+            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:100%;">
+              <path d="M3 4h2.2l1 2.2M6.2 6.2l1.8 8.6a1.8 1.8 0 0 0 1.8 1.4h7.6a1.8 1.8 0 0 0 1.8-1.4l1.3-6H6.2z" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+              <circle cx="10" cy="19.5" r="1.4" stroke="currentColor" stroke-width="1.5"/>
+              <circle cx="17" cy="19.5" r="1.4" stroke="currentColor" stroke-width="1.5"/>
+            </svg>
+            <span id="badge-carrinho" class="hidden absolute -top-1 -right-2 bg-terracotta-500 text-white text-[9px] font-bold rounded-full min-w-[15px] h-[15px] flex items-center justify-center px-0.5"></span>
+          </span>
+          <span class="tab-label text-[11px] text-sand-500">Carrinho</span>
+          <span class="tab-dot w-1 h-1 rounded-full bg-sage-600 opacity-0"></span>
+        </button>
+        <button class="tab-btn flex flex-col items-center gap-0.5 py-2.5" data-tab="config" onclick="DespenseiApp.switchTab('config')">
+          <span class="tab-icon w-6 h-6 text-sand-400 transition-transform">
+            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:100%;">
+              <path d="M12 5.5c-1.6-1.3-3.7-1.8-6-1.8-.6 0-1 .4-1 1v11.6c0 .6.4 1 1 1 2.3 0 4.4.5 6 1.8 1.6-1.3 3.7-1.8 6-1.8.6 0 1-.4 1-1V4.7c0-.6-.4-1-1-1-2.3 0-4.4.5-6 1.8z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+              <path d="M12 5.5v13" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+              <path d="M7.3 8h2.8M7.3 10.6h2.8M14 8h2.8M14 10.6h2.8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+            </svg>
+          </span>
+          <span class="tab-label text-[11px] text-sand-500">Catálogo</span>
+          <span class="tab-dot w-1 h-1 rounded-full bg-sage-600 opacity-0"></span>
+        </button>
+      </div>
+    </nav>
+
+  </div>
+
+  <!-- ===================== MODAL EDITAR PRODUTO ===================== -->
+  <div id="modal-editar" class="hidden fixed inset-0 z-50 bg-sand-900/40 backdrop-blur-[1px] flex items-end sm:items-center justify-center px-4 pb-4 sm:pb-0">
+    <div class="bg-white rounded-2xl w-full max-w-sm p-4 shadow-xl">
+      <h3 class="text-sm font-extrabold text-sage-800 mb-3">Editar produto</h3>
+      <div class="space-y-2.5">
+        <div>
+          <label class="block text-xs font-bold text-sand-700 mb-1">Nome</label>
+          <input id="editar-produto-nome" type="text"
+            class="w-full border border-sand-200 rounded-xl px-3 py-2.5 text-sm bg-sand-50 focus:outline-none focus:ring-2 focus:ring-sage-400">
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-sand-700 mb-1">Categoria</label>
+          <select id="editar-produto-categoria" class="w-full border border-sand-200 rounded-xl px-3 py-2.5 text-sm bg-sand-50 focus:outline-none focus:ring-2 focus:ring-sage-400"></select>
+        </div>
+        <div class="flex items-center justify-between pt-1">
+          <label class="block text-xs font-bold text-sand-700">Código de barras</label>
+          <button onclick="DespenseiApp.abrirScannerParaEdicao()" class="text-xs font-bold text-sage-700 bg-sage-50 rounded-lg px-2.5 py-1.5 active:scale-95 transition">📷 Escanear</button>
+        </div>
+        <input id="editar-produto-codigo-barras" type="text" placeholder="Sem código vinculado"
+          class="w-full border border-sand-200 rounded-xl px-3 py-2.5 text-sm bg-sand-50 focus:outline-none focus:ring-2 focus:ring-sage-400">
+      </div>
+      <div class="flex gap-2 mt-4">
+        <button onclick="DespenseiApp.fecharModalEditar()" class="flex-1 bg-sand-100 text-sand-700 font-bold rounded-xl py-2.5 text-sm active:scale-[0.98] transition">Cancelar</button>
+        <button onclick="DespenseiApp.salvarEdicaoProduto()" class="flex-1 bg-sage-600 hover:bg-sage-700 text-white font-bold rounded-xl py-2.5 text-sm active:scale-[0.98] transition">Salvar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== MODAL SCANNER DE CÓDIGO DE BARRAS ===================== -->
+  <div id="modal-scanner" class="hidden fixed inset-0 z-[60] bg-black flex flex-col">
+    <div class="flex items-center justify-between p-4">
+      <span class="text-white font-bold text-sm">Aponte para o código de barras</span>
+      <button onclick="DespenseiBarcode.parar()" class="text-white text-2xl leading-none px-2">✕</button>
+    </div>
+    <video id="scanner-video" class="flex-1 w-full" style="object-fit:cover;" playsinline autoplay muted></video>
+    <p id="scanner-status" class="text-white/80 text-xs text-center p-4"></p>
+  </div>
+
+  <!-- ===================== LOADER GLOBAL ===================== -->
+  <div id="loader-overlay" class="hidden fixed inset-0 z-50 bg-sand-900/30 backdrop-blur-[1px] flex items-center justify-center">
+    <div class="bg-white rounded-2xl px-6 py-5 shadow-xl flex items-center gap-3">
+      <svg class="spinner" width="22" height="22" viewBox="0 0 24 24" fill="none">
+        <circle cx="12" cy="12" r="9" stroke="#e5eddd" stroke-width="3"/>
+        <path d="M21 12a9 9 0 0 0-9-9" stroke="#4d7241" stroke-width="3" stroke-linecap="round"/>
+      </svg>
+      <span class="text-sm font-bold text-sand-700">Salvando…</span>
+    </div>
+  </div>
+
+  <!-- ===================== TOAST ===================== -->
+  <div id="toast" class="hidden toast fixed bottom-24 left-1/2 z-50 px-4 py-2.5 rounded-xl shadow-lg text-sm font-bold text-white max-w-[85%] text-center"></div>
+
+  <!-- Carregados sem async/defer de propósito: precisam estar prontos (window.google e
+       window.ZXingBrowser) antes do DOMContentLoaded chamar DespenseiAuth.init() abaixo. -->
+  <script src="https://accounts.google.com/gsi/client"></script>
+  <script src="https://unpkg.com/@zxing/browser@latest/umd/index.min.js"></script>
+  <script src="auth.js"></script>
+  <script src="api.js"></script>
+  <script src="barcode.js"></script>
+  <script src="app.js"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', function () {
+        navigator.serviceWorker.register('sw.js').catch(function () { /* PWA opcional — ignora se falhar */ });
+      });
+    }
+    document.addEventListener('DOMContentLoaded', function () {
+      DespenseiAuth.init(DespenseiApp.aoLogar);
+    });
+  </script>
+</body>
+</html>
