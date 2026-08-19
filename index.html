@@ -83,6 +83,10 @@
 
       <div class="bg-white rounded-2xl p-4 shadow-sm border border-sand-100 mb-4">
         <h3 class="text-sm font-extrabold text-sage-800 mb-2">Criar minha família</h3>
+        <p class="text-xs text-sand-600 mb-2">Use o código de ativação que você recebeu na compra do Despensei.</p>
+        <input id="familia-codigo-ativacao" type="text" placeholder="Código de ativação"
+          style="text-transform:uppercase;"
+          class="w-full border border-sand-200 rounded-xl px-3 py-2.5 text-sm bg-sand-50 mb-2 focus:outline-none focus:ring-2 focus:ring-sage-400">
         <input id="familia-nome" type="text" placeholder="Ex: Casa da Daiane"
           class="w-full border border-sand-200 rounded-xl px-3 py-2.5 text-sm bg-sand-50 mb-2 focus:outline-none focus:ring-2 focus:ring-sage-400">
         <button onclick="DespenseiApp.criarFamilia()" class="w-full bg-sage-600 hover:bg-sage-700 text-white font-bold rounded-xl py-2.5 text-sm active:scale-[0.98] transition">
@@ -92,6 +96,7 @@
 
       <div class="bg-white rounded-2xl p-4 shadow-sm border border-sand-100">
         <h3 class="text-sm font-extrabold text-sage-800 mb-2">Já tenho um código de convite</h3>
+        <p class="text-xs text-sand-600 mb-2">Só funciona se quem administra a família já convidou este seu e-mail.</p>
         <input id="familia-codigo" type="text" placeholder="Ex: A3F9K2" maxlength="6" style="text-transform:uppercase;"
           class="w-full border border-sand-200 rounded-xl px-3 py-2.5 text-sm bg-sand-50 mb-2 focus:outline-none focus:ring-2 focus:ring-sage-400">
         <button onclick="DespenseiApp.entrarComCodigo()" class="w-full bg-sand-100 hover:bg-sand-200 text-sand-800 font-bold rounded-xl py-2.5 text-sm active:scale-[0.98] transition">
@@ -101,6 +106,17 @@
 
       <button onclick="DespenseiAuth.logout()" class="w-full text-xs text-sand-400 mt-5">Sair / trocar de conta</button>
     </div>
+  </div>
+
+  <!-- ===================== TELA DE ASSINATURA VENCIDA ===================== -->
+  <div id="view-bloqueado" class="hidden min-h-screen flex flex-col items-center justify-center px-6 text-center">
+    <p class="text-4xl mb-3">🔒</p>
+    <h2 class="text-lg font-extrabold text-sand-900">Assinatura vencida</h2>
+    <p class="text-sm text-sand-600 mt-2 max-w-xs">
+      O acesso da família <b id="bloqueado-familia-nome" class="text-sand-800"></b> ao Despensei está temporariamente bloqueado.
+      Fale com quem vendeu o app pra renovar.
+    </p>
+    <button onclick="DespenseiAuth.logout()" class="text-xs text-sand-400 mt-6">Sair / trocar de conta</button>
   </div>
 
   <!-- ===================== APP (Despensa / Lista / Carrinho / Catálogo) ===================== -->
@@ -252,8 +268,18 @@
         <div class="bg-white rounded-2xl p-3.5 mb-5 shadow-sm border border-sand-100">
           <h3 class="text-sm font-extrabold text-sage-800 mb-2">👪 Minha família</h3>
           <p class="text-sm text-sand-800 font-semibold" id="familia-info-nome">—</p>
-          <p class="text-xs text-sand-600 mt-1">Código de convite: <b id="familia-info-codigo" class="text-sage-700 tracking-widest">—</b></p>
+          <p class="text-xs text-sand-600 mt-1">Código de convite: <b id="familia-info-codigo" class="text-sage-700 tracking-widest">—</b> (<span id="familia-info-vagas">—</span> vagas)</p>
           <div id="familia-info-membros" class="mt-3 space-y-1"></div>
+
+          <div id="familia-convite-admin" class="hidden mt-3 pt-3 border-t border-sand-100">
+            <p class="text-xs text-sand-600 mb-2">Convide um membro da família pelo e-mail da conta Google dele(a). Só quem for convidado consegue entrar com o código acima.</p>
+            <div class="flex gap-2">
+              <input id="familia-convite-email" type="email" placeholder="email@exemplo.com"
+                class="flex-1 min-w-0 border border-sand-200 rounded-xl px-3 py-2.5 text-sm bg-sand-50 focus:outline-none focus:ring-2 focus:ring-sage-400">
+              <button onclick="DespenseiApp.convidarMembro()" class="shrink-0 bg-sage-100 text-sage-700 font-bold rounded-xl px-3.5 py-2.5 text-sm active:scale-95 transition">Convidar</button>
+            </div>
+            <div id="familia-convites-pendentes" class="mt-2 space-y-1"></div>
+          </div>
         </div>
 
         <!-- WhatsApp -->

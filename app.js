@@ -61,9 +61,20 @@ const DespenseiApp = (function () {
   }
 
   function mostrarView(nome) {
-    ['login', 'familia', 'app'].forEach(function (v) {
+    ['login', 'familia', 'bloqueado', 'app'].forEach(function (v) {
       document.getElementById('view-' + v).classList.toggle('hidden', v !== nome);
     });
+  }
+
+  // Preenche os códigos automaticamente quando o app é aberto por um link de
+  // ativação (?ativacao=CODIGO) ou de convite de família (?convite=CODIGO),
+  // pra quem recebeu o link não precisar copiar/colar nada na mão.
+  function preencherCodigosDaUrl_() {
+    const params = new URLSearchParams(location.search);
+    const ativacao = params.get('ativacao');
+    const convite = params.get('convite');
+    if (ativacao) document.getElementById('familia-codigo-ativacao').value = ativacao.toUpperCase();
+    if (convite) document.getElementById('familia-codigo').value = convite.toUpperCase();
   }
 
   // ===================== LOGIN / FAMÍLIA =====================
@@ -84,6 +95,12 @@ const DespenseiApp = (function () {
   function aoReceberEstado(dados) {
     if (dados.estado === 'sem_familia') {
       mostrarView('familia');
+      preencherCodigosDaUrl_();
+      return;
+    }
+    if (dados.estado === 'assinatura_vencida') {
+      document.getElementById('bloqueado-familia-nome').textContent = dados.nomeFamilia || '';
+      mostrarView('bloqueado');
       return;
     }
     APP.despensa = dados.despensa;
@@ -99,9 +116,11 @@ const DespenseiApp = (function () {
 
   async function criarFamilia() {
     const nome = document.getElementById('familia-nome').value.trim();
+    const codigoAtivacao = document.getElementById('familia-codigo-ativacao').value.trim();
+    if (!codigoAtivacao) { showToast('Digite o código de ativação recebido na compra.', 'erro'); return; }
     showLoader();
     try {
-      const dados = await chamarApi('criarFamilia', { nome: nome });
+      const dados = await chamarApi('criarFamilia', { nome: nome, codigoAtivacao: codigoAtivacao });
       aoReceberEstado(dados);
     } catch (err) {
       showToast('Erro: ' + (err.message || err), 'erro');
@@ -131,16 +150,73 @@ const DespenseiApp = (function () {
       document.getElementById('header-familia-nome').textContent = info.nome;
       document.getElementById('familia-info-nome').textContent = info.nome;
       document.getElementById('familia-info-codigo').textContent = info.codigoConvite;
+      document.getElementById('familia-info-vagas').textContent = info.membros.length + '/' + info.limiteMembros;
 
       const meuEmail = DespenseiAuth.getEmail();
       const meuMembro = info.membros.find(function (m) { return m.email === meuEmail; });
       if (meuMembro && meuMembro.telefone) document.getElementById('meu-telefone').value = meuMembro.telefone;
 
       document.getElementById('familia-info-membros').innerHTML = info.membros.map(function (m) {
-        return `<p class="text-xs text-sand-600">${m.papel === 'admin' ? '👑' : '•'} ${escapeHtml(m.email)}${m.telefone ? ' <span class="text-sage-600">📱</span>' : ''}</p>`;
+        const podeRemover = info.souAdmin && m.email !== meuEmail;
+        return `<p class="text-xs text-sand-600 flex items-center justify-between gap-2">
+          <span>${m.papel === 'admin' ? '👑' : '•'} ${escapeHtml(m.email)}${m.telefone ? ' <span class="text-sage-600">📱</span>' : ''}</span>
+          ${podeRemover ? `<button onclick="DespenseiApp.removerMembro('${escapeHtml(m.email)}')" class="text-terracotta-600 text-[11px] font-bold shrink-0">remover</button>` : ''}
+        </p>`;
+      }).join('');
+
+      document.getElementById('familia-convite-admin').classList.toggle('hidden', !info.souAdmin);
+      document.getElementById('familia-convites-pendentes').innerHTML = (info.convitesPendentes || []).map(function (email) {
+        return `<p class="text-xs text-sand-400 flex items-center justify-between gap-2">
+          <span>⏳ ${escapeHtml(email)} (convite pendente)</span>
+          <button onclick="DespenseiApp.cancelarConvite('${escapeHtml(email)}')" class="text-terracotta-600 text-[11px] font-bold shrink-0">cancelar</button>
+        </p>`;
       }).join('');
     } catch (err) {
       // tela de família não é crítica pro resto do app — não bloqueia em caso de erro
+    }
+  }
+
+  async function removerMembro(email) {
+    if (!confirm('Remover ' + email + ' da família?')) return;
+    showLoader();
+    try {
+      await chamarApi('removerMembro', { emailAlvo: email });
+      showToast('Membro removido.');
+      await carregarInfoFamilia();
+    } catch (err) {
+      showToast('Erro: ' + (err.message || err), 'erro');
+    } finally {
+      hideLoader();
+    }
+  }
+
+  async function cancelarConvite(email) {
+    showLoader();
+    try {
+      await chamarApi('cancelarConvite', { emailConvidado: email });
+      showToast('Convite cancelado.');
+      await carregarInfoFamilia();
+    } catch (err) {
+      showToast('Erro: ' + (err.message || err), 'erro');
+    } finally {
+      hideLoader();
+    }
+  }
+
+  async function convidarMembro() {
+    const input = document.getElementById('familia-convite-email');
+    const email = input.value.trim();
+    if (!email) { showToast('Digite o e-mail da pessoa a convidar.', 'erro'); return; }
+    showLoader();
+    try {
+      await chamarApi('convidarMembro', { emailConvidado: email });
+      input.value = '';
+      showToast('Convite enviado para ' + email + '!');
+      await carregarInfoFamilia();
+    } catch (err) {
+      showToast('Erro: ' + (err.message || err), 'erro');
+    } finally {
+      hideLoader();
     }
   }
 
@@ -833,6 +909,9 @@ const DespenseiApp = (function () {
     aoLogar,
     criarFamilia,
     entrarComCodigo,
+    convidarMembro,
+    removerMembro,
+    cancelarConvite,
     salvarTelefone,
     switchTab,
     mudarEstoque,
