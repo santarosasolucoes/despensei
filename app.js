@@ -435,7 +435,7 @@ const DespenseiApp = (function () {
 
   function cardListaItem(p) {
     return `
-      <div class="bg-white rounded-2xl p-3 shadow-sm border border-sand-100 flex items-center gap-3">
+      <div class="bg-white rounded-2xl p-3 shadow-sm border border-sand-100 flex items-center gap-2">
         <div class="flex-1 min-w-0">
           <div class="flex items-center gap-1.5">
             <p class="font-bold text-sm text-sand-900 truncate">${escapeHtml(p.nome)}</p>
@@ -446,7 +446,25 @@ const DespenseiApp = (function () {
           ${p.qtdUltimaCompra ? `<p class="text-[11px] text-sand-500 mt-0.5">Última vez você comprou: <b>${p.qtdUltimaCompra}</b></p>` : ''}
         </div>
         <button onclick="DespenseiApp.adicionarRapidoAoCarrinho('${p.id}')" class="shrink-0 bg-sage-100 text-sage-700 font-bold rounded-xl px-3 py-2 text-xs active:scale-95 transition">+ Carrinho</button>
+        <button onclick="DespenseiApp.removerItemLista('${p.id}')" class="shrink-0 w-8 h-8 rounded-full bg-terracotta-50 text-terracotta-600 font-bold active:bg-terracotta-100 flex items-center justify-center" aria-label="Remover da lista">✕</button>
       </div>`;
+  }
+
+  async function removerItemLista(idProduto) {
+    showLoader();
+    try {
+      await chamarApi('removerItemManualLista', { idProduto: idProduto });
+      APP.listaCompras = await chamarApi('getListaCompras', {});
+      atualizarProdutosCompraveis();
+      renderListaCompras();
+      renderSelectProdutos();
+      atualizarBadges();
+      showToast('Removido da lista.');
+    } catch (err) {
+      showToast('Erro: ' + (err.message || err), 'erro');
+    } finally {
+      hideLoader();
+    }
   }
 
   function adicionarRapidoAoCarrinho(idProduto) {
@@ -948,6 +966,7 @@ const DespenseiApp = (function () {
     adicionarComoDesejo,
     adicionarItemAvulso,
     adicionarRapidoAoCarrinho,
+    removerItemLista,
     aoSelecionarProduto,
     atualizarIndicadorPreco,
     ajustarQtdForm,
