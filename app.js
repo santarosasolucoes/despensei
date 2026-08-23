@@ -453,8 +453,8 @@ const DespenseiApp = (function () {
   async function removerItemLista(idProduto) {
     showLoader();
     try {
-      await chamarApi('removerItemManualLista', { idProduto: idProduto });
-      APP.listaCompras = await chamarApi('getListaCompras', {});
+      const resultado = await chamarApi('removerItemManualLista', { idProduto: idProduto });
+      APP.listaCompras = resultado.listaCompras;
       atualizarProdutosCompraveis();
       renderListaCompras();
       renderSelectProdutos();

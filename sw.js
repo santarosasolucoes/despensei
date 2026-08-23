@@ -3,7 +3,11 @@
 // Chamadas à API (Apps Script) NUNCA são cacheadas: dados de despensa/lista têm
 // que vir sempre da rede, senão a família vê estoque desatualizado.
 
-const CACHE_NAME = 'despensei-v1';
+// v2 (2026-08-23): força todo cliente antigo a esvaziar o cache acumulado —
+// ver mudança da estratégia de fetch abaixo (era cache-primeiro, virou
+// rede-primeiro) pra parar de servir versões velhas do app depois de cada
+// publicação nova.
+const CACHE_NAME = 'despensei-v2';
 const APP_SHELL = [
   './',
   './index.html',
@@ -45,17 +49,19 @@ self.addEventListener('fetch', function (event) {
   // API do Apps Script (outra origem) passam direto pela rede, sem cache.
   if (event.request.method !== 'GET' || url.origin !== self.location.origin) return;
 
+  // Rede primeiro: sempre busca a versão mais nova quando online (e atualiza o
+  // cache pra próxima vez offline). Só cai pro cache se a rede falhar de
+  // verdade (sem internet) — isso evita ficar preso numa versão antiga do app
+  // depois de cada publicação nova no GitHub Pages.
   event.respondWith(
-    caches.match(event.request).then(function (cached) {
-      const rede = fetch(event.request).then(function (resposta) {
-        if (resposta && resposta.ok) {
-          const copia = resposta.clone();
-          caches.open(CACHE_NAME).then(function (cache) { cache.put(event.request, copia); });
-        }
-        return resposta;
-      }).catch(function () { return cached; });
-
-      return cached || rede;
+    fetch(event.request).then(function (resposta) {
+      if (resposta && resposta.ok) {
+        const copia = resposta.clone();
+        caches.open(CACHE_NAME).then(function (cache) { cache.put(event.request, copia); });
+      }
+      return resposta;
+    }).catch(function () {
+      return caches.match(event.request);
     })
   );
 });
