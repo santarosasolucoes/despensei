@@ -77,6 +77,15 @@ const DespenseiApp = (function () {
     if (convite) document.getElementById('familia-codigo').value = convite.toUpperCase();
   }
 
+  // Preenche e-mail (só exibição) e nome completo (editável) a partir da conta
+  // Google usada no login, pra reduzir digitação no cadastro básico.
+  function preencherDadosPessoais_() {
+    const elEmail = document.getElementById('familia-email-login');
+    if (elEmail) elEmail.textContent = DespenseiAuth.getEmail() || '';
+    const elNome = document.getElementById('familia-nome-completo');
+    if (elNome && !elNome.value) elNome.value = DespenseiAuth.getNome() || '';
+  }
+
   // ===================== LOGIN / FAMÍLIA =====================
 
   async function aoLogar() {
@@ -96,6 +105,7 @@ const DespenseiApp = (function () {
     if (dados.estado === 'sem_familia') {
       mostrarView('familia');
       preencherCodigosDaUrl_();
+      preencherDadosPessoais_();
       return;
     }
     if (dados.estado === 'assinatura_vencida') {
@@ -114,13 +124,24 @@ const DespenseiApp = (function () {
     carregarInfoFamilia();
   }
 
+  function lerDadosPessoais_() {
+    const nomeCompleto = document.getElementById('familia-nome-completo').value.trim();
+    const telefone = document.getElementById('familia-telefone-cadastro').value.trim();
+    if (!nomeCompleto) { showToast('Digite seu nome completo.', 'erro'); return null; }
+    return { nomeCompleto: nomeCompleto, telefone: telefone };
+  }
+
   async function criarFamilia() {
     const nome = document.getElementById('familia-nome').value.trim();
     const codigoAtivacao = document.getElementById('familia-codigo-ativacao').value.trim();
-    if (!codigoAtivacao) { showToast('Digite o código de ativação recebido na compra.', 'erro'); return; }
+    const dadosPessoais = lerDadosPessoais_();
+    if (!dadosPessoais) return;
     showLoader();
     try {
-      const dados = await chamarApi('criarFamilia', { nome: nome, codigoAtivacao: codigoAtivacao });
+      const dados = await chamarApi('criarFamilia', {
+        nome: nome, codigoAtivacao: codigoAtivacao,
+        nomeCompleto: dadosPessoais.nomeCompleto, telefone: dadosPessoais.telefone
+      });
       aoReceberEstado(dados);
     } catch (err) {
       showToast('Erro: ' + (err.message || err), 'erro');
@@ -132,9 +153,13 @@ const DespenseiApp = (function () {
   async function entrarComCodigo() {
     const codigo = document.getElementById('familia-codigo').value.trim();
     if (!codigo) { showToast('Digite o código de convite.', 'erro'); return; }
+    const dadosPessoais = lerDadosPessoais_();
+    if (!dadosPessoais) return;
     showLoader();
     try {
-      const dados = await chamarApi('entrarFamiliaComCodigo', { codigo: codigo });
+      const dados = await chamarApi('entrarFamiliaComCodigo', {
+        codigo: codigo, nomeCompleto: dadosPessoais.nomeCompleto, telefone: dadosPessoais.telefone
+      });
       aoReceberEstado(dados);
     } catch (err) {
       showToast('Erro: ' + (err.message || err), 'erro');
