@@ -5,6 +5,7 @@ const GOOGLE_CLIENT_ID = '429667579829-p5shhj2gh4tpj07qbgk0pqd8ha3gl9v0.apps.goo
 const DespenseiAuth = (function () {
   let idToken = sessionStorage.getItem('despensei_id_token') || null;
   let email = sessionStorage.getItem('despensei_email') || null;
+  let nome = sessionStorage.getItem('despensei_nome') || null;
   let onLoginCallback = null;
 
   function init(onLogin) {
@@ -44,6 +45,8 @@ const DespenseiAuth = (function () {
     const payload = decodeJwtPayload_(idToken);
     email = (payload && payload.email) || null;
     if (email) sessionStorage.setItem('despensei_email', email);
+    nome = (payload && payload.name) || null;
+    if (nome) sessionStorage.setItem('despensei_nome', nome);
     onLoginCallback && onLoginCallback();
   }
 
@@ -70,16 +73,19 @@ const DespenseiAuth = (function () {
   function logout() {
     idToken = null;
     email = null;
+    nome = null;
     sessionStorage.removeItem('despensei_id_token');
     sessionStorage.removeItem('despensei_email');
+    sessionStorage.removeItem('despensei_nome');
     if (window.google && google.accounts && google.accounts.id) google.accounts.id.disableAutoSelect();
     location.reload();
   }
 
   function getIdToken() { return idToken; }
   function getEmail() { return email; }
+  function getNome() { return nome; }
 
-  return { init, logout, pedirNovoLogin, getIdToken, getEmail };
+  return { init, logout, pedirNovoLogin, getIdToken, getEmail, getNome };
 })();
 
 window.DespenseiAuth = DespenseiAuth;
