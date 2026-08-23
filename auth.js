@@ -2,10 +2,14 @@
 // TODO(Daiane): depois de criar o OAuth Client ID no Google Cloud Console, cole o Client ID aqui.
 const GOOGLE_CLIENT_ID = '429667579829-p5shhj2gh4tpj07qbgk0pqd8ha3gl9v0.apps.googleusercontent.com';
 
+// Guardado em localStorage (não sessionStorage) de propósito: sessionStorage
+// some ao fechar a aba/navegador, obrigando login de novo toda vez — ruim pra
+// quem abre o app várias vezes por dia. localStorage persiste até o usuário
+// pedir "Sair do app" explicitamente (ver logout()).
 const DespenseiAuth = (function () {
-  let idToken = sessionStorage.getItem('despensei_id_token') || null;
-  let email = sessionStorage.getItem('despensei_email') || null;
-  let nome = sessionStorage.getItem('despensei_nome') || null;
+  let idToken = localStorage.getItem('despensei_id_token') || null;
+  let email = localStorage.getItem('despensei_email') || null;
+  let nome = localStorage.getItem('despensei_nome') || null;
   let onLoginCallback = null;
 
   function init(onLogin) {
@@ -32,6 +36,13 @@ const DespenseiAuth = (function () {
       google.accounts.id.renderButton(botao, { theme: 'filled_black', size: 'large', shape: 'pill', text: 'continue_with', width: 280 });
     }
 
+    // Token salvo mas já vencido (Google expira em ~1h): não adianta chamar o
+    // app com ele, só ia falhar e mostrar erro antes de pedir login de novo.
+    // Pula direto pro prompt silencioso do Google nesse caso.
+    if (idToken && tokenExpirado_(idToken)) {
+      idToken = null;
+    }
+
     if (idToken) {
       onLoginCallback && onLoginCallback();
     } else {
@@ -39,14 +50,20 @@ const DespenseiAuth = (function () {
     }
   }
 
+  function tokenExpirado_(token) {
+    const payload = decodeJwtPayload_(token);
+    if (!payload || !payload.exp) return true;
+    return (payload.exp * 1000) < Date.now();
+  }
+
   function handleCredentialResponse_(response) {
     idToken = response.credential;
-    sessionStorage.setItem('despensei_id_token', idToken);
+    localStorage.setItem('despensei_id_token', idToken);
     const payload = decodeJwtPayload_(idToken);
     email = (payload && payload.email) || null;
-    if (email) sessionStorage.setItem('despensei_email', email);
+    if (email) localStorage.setItem('despensei_email', email);
     nome = (payload && payload.name) || null;
-    if (nome) sessionStorage.setItem('despensei_nome', nome);
+    if (nome) localStorage.setItem('despensei_nome', nome);
     onLoginCallback && onLoginCallback();
   }
 
@@ -66,7 +83,7 @@ const DespenseiAuth = (function () {
 
   function pedirNovoLogin() {
     idToken = null;
-    sessionStorage.removeItem('despensei_id_token');
+    localStorage.removeItem('despensei_id_token');
     if (window.google && google.accounts && google.accounts.id) google.accounts.id.prompt();
   }
 
@@ -74,9 +91,9 @@ const DespenseiAuth = (function () {
     idToken = null;
     email = null;
     nome = null;
-    sessionStorage.removeItem('despensei_id_token');
-    sessionStorage.removeItem('despensei_email');
-    sessionStorage.removeItem('despensei_nome');
+    localStorage.removeItem('despensei_id_token');
+    localStorage.removeItem('despensei_email');
+    localStorage.removeItem('despensei_nome');
     if (window.google && google.accounts && google.accounts.id) google.accounts.id.disableAutoSelect();
     location.reload();
   }
