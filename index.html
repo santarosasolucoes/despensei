@@ -273,6 +273,15 @@
           Meu Catálogo &amp; Configurações
         </h2>
 
+        <!-- Conta -->
+        <div class="bg-white rounded-2xl p-3.5 mb-5 shadow-sm border border-sand-100 flex items-center justify-between gap-3">
+          <div class="min-w-0">
+            <h3 class="text-sm font-extrabold text-sage-800">👤 Conta</h3>
+            <p class="text-xs text-sand-600 truncate" id="config-email-logado">—</p>
+          </div>
+          <button onclick="DespenseiAuth.logout()" class="shrink-0 text-xs text-terracotta-500 font-bold border border-terracotta-200 rounded-xl px-3.5 py-2.5 active:scale-95 transition">Sair do app</button>
+        </div>
+
         <!-- Minha família -->
         <div class="bg-white rounded-2xl p-3.5 mb-5 shadow-sm border border-sand-100">
           <h3 class="text-sm font-extrabold text-sage-800 mb-2">👪 Minha família</h3>
@@ -346,7 +355,6 @@
           </div>
         </div>
 
-        <button onclick="DespenseiAuth.logout()" class="w-full text-xs text-terracotta-500 font-bold py-3">Sair da conta</button>
       </section>
 
     </main>
