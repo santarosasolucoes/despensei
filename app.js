@@ -122,6 +122,8 @@ const DespenseiApp = (function () {
     mostrarView('app');
     renderTudo();
     carregarInfoFamilia();
+    const elEmailConfig = document.getElementById('config-email-logado');
+    if (elEmailConfig) elEmailConfig.textContent = DespenseiAuth.getEmail() || '';
   }
 
   function lerDadosPessoais_() {
