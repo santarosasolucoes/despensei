@@ -144,6 +144,9 @@ const DespenseiApp = (function () {
         nome: nome, codigoAtivacao: codigoAtivacao,
         nomeCompleto: dadosPessoais.nomeCompleto, telefone: dadosPessoais.telefone
       });
+      showToast(codigoAtivacao
+        ? 'Família criada com sucesso!'
+        : 'Família criada! Você tem 14 dias de teste grátis — o código de acesso foi enviado para o seu e-mail.');
       aoReceberEstado(dados);
     } catch (err) {
       showToast('Erro: ' + (err.message || err), 'erro');
