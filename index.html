@@ -68,7 +68,6 @@
     <div id="google-signin-button"></div>
 
     <p id="login-erro-config" class="hidden mt-6 text-xs text-terracotta-600 bg-terracotta-50 border border-terracotta-200 rounded-xl px-4 py-3 max-w-xs">
-      Configuração pendente: o GOOGLE_CLIENT_ID ainda não foi preenchido em <code>web/auth.js</code>.
     </p>
   </div>
 
@@ -140,6 +139,7 @@
           <p id="header-familia-nome" class="text-[11px] text-sand-600 -mt-0.5">já pensei em tudo</p>
         </div>
       </div>
+      <p id="sync-status" class="hidden"></p>
     </header>
 
     <!-- CONTEÚDO -->
@@ -470,12 +470,16 @@
   <!-- ===================== TOAST ===================== -->
   <div id="toast" class="hidden toast fixed bottom-24 left-1/2 z-50 px-4 py-2.5 rounded-xl shadow-lg text-sm font-bold text-white max-w-[85%] text-center"></div>
 
-  <!-- Carregados sem async/defer de propósito: precisam estar prontos (window.google e
-       window.ZXingBrowser) antes do DOMContentLoaded chamar DespenseiAuth.init() abaixo. -->
+  <!-- Carregados sem async/defer de propósito: precisam estar prontos (window.google,
+       window.ZXingBrowser e window.supabase) antes do DOMContentLoaded chamar
+       DespenseiAuth.init() abaixo. O supabase-js fica na própria pasta (vendor/)
+       pra o app abrir mesmo sem internet. -->
   <script src="https://accounts.google.com/gsi/client"></script>
-  <script src="https://unpkg.com/@zxing/browser@latest/umd/index.min.js"></script>
-  <script src="auth.js"></script>
+  <script src="https://unpkg.com/@zxing/browser@0.2.1/umd/zxing-browser.min.js"></script>
+  <script src="vendor/supabase.js"></script>
+  <script src="config.js"></script>
   <script src="api.js"></script>
+  <script src="auth.js"></script>
   <script src="barcode.js"></script>
   <script src="app.js"></script>
   <script>

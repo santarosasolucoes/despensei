@@ -1,108 +1,120 @@
-// ===================== LOGIN COM GOOGLE (Google Identity Services) =====================
-// TODO(Daiane): depois de criar o OAuth Client ID no Google Cloud Console, cole o Client ID aqui.
-const GOOGLE_CLIENT_ID = '429667579829-p5shhj2gh4tpj07qbgk0pqd8ha3gl9v0.apps.googleusercontent.com';
+// ===================== LOGIN COM GOOGLE → SESSÃO DO SUPABASE =====================
+// O botão continua sendo o "Continuar com o Google" (Google Identity Services).
+// O token que o Google devolve é trocado por uma sessão do Supabase
+// (signInWithIdToken), que o próprio supabase-js guarda no aparelho e renova
+// sozinho — o usuário não precisa logar de novo a cada hora, como antes.
+// Sem internet, o app entra com a última sessão salva e os dados guardados.
 
-// Guardado em localStorage (não sessionStorage) de propósito: sessionStorage
-// some ao fechar a aba/navegador, obrigando login de novo toda vez — ruim pra
-// quem abre o app várias vezes por dia. localStorage persiste até o usuário
-// pedir "Sair do app" explicitamente (ver logout()).
 const DespenseiAuth = (function () {
-  let idToken = localStorage.getItem('despensei_id_token') || null;
-  let email = localStorage.getItem('despensei_email') || null;
-  let nome = localStorage.getItem('despensei_nome') || null;
+  const CHAVE_SESSAO = 'sb-' + new URL(DESPENSEI_CONFIG.SUPABASE_URL).hostname.split('.')[0] + '-auth-token';
+  let email = null;
+  let nome = null;
   let onLoginCallback = null;
+  let googleIniciado = false;
 
-  function init(onLogin) {
-    onLoginCallback = onLogin;
+  // Limpa o login da versão anterior do app (token do Google guardado direto).
+  ['despensei_id_token', 'despensei_email', 'despensei_nome'].forEach(function (k) {
+    try { localStorage.removeItem(k); } catch (e) { /* ignora */ }
+  });
 
-    if (!GOOGLE_CLIENT_ID || GOOGLE_CLIENT_ID.indexOf('COLE_AQUI') === 0) {
-      console.error('GOOGLE_CLIENT_ID não configurado em web/auth.js.');
-      mostrarErroConfiguracao_();
-      return;
-    }
-    if (!window.google || !google.accounts || !google.accounts.id) {
-      console.error('Google Identity Services não carregou (sem internet?).');
-      return;
-    }
-
-    google.accounts.id.initialize({
-      client_id: GOOGLE_CLIENT_ID,
-      callback: handleCredentialResponse_,
-      auto_select: true
-    });
-
-    const botao = document.getElementById('google-signin-button');
-    if (botao) {
-      google.accounts.id.renderButton(botao, { theme: 'filled_black', size: 'large', shape: 'pill', text: 'continue_with', width: 280 });
-    }
-
-    // Token salvo mas já vencido (Google expira em ~1h): não adianta chamar o
-    // app com ele, só ia falhar e mostrar erro antes de pedir login de novo.
-    // Pula direto pro prompt silencioso do Google nesse caso.
-    if (idToken && tokenExpirado_(idToken)) {
-      idToken = null;
-    }
-
-    if (idToken) {
-      onLoginCallback && onLoginCallback();
-    } else {
-      google.accounts.id.prompt();
-    }
-  }
-
-  function tokenExpirado_(token) {
-    const payload = decodeJwtPayload_(token);
-    if (!payload || !payload.exp) return true;
-    return (payload.exp * 1000) < Date.now();
-  }
-
-  function handleCredentialResponse_(response) {
-    idToken = response.credential;
-    localStorage.setItem('despensei_id_token', idToken);
-    const payload = decodeJwtPayload_(idToken);
-    email = (payload && payload.email) || null;
-    if (email) localStorage.setItem('despensei_email', email);
-    nome = (payload && payload.name) || null;
-    if (nome) localStorage.setItem('despensei_nome', nome);
-    onLoginCallback && onLoginCallback();
-  }
-
-  function decodeJwtPayload_(token) {
+  // Lê a sessão salva sem precisar de internet.
+  function sessaoSalva_() {
     try {
-      const base64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
-      return JSON.parse(decodeURIComponent(escape(atob(base64))));
+      const bruto = JSON.parse(localStorage.getItem(CHAVE_SESSAO) || 'null');
+      const s = bruto && (bruto.currentSession || bruto);
+      return s && s.user ? s : null;
     } catch (e) {
       return null;
     }
   }
 
-  function mostrarErroConfiguracao_() {
-    const el = document.getElementById('login-erro-config');
-    if (el) el.classList.remove('hidden');
+  function guardarUsuario_(user) {
+    email = user && user.email ? String(user.email).toLowerCase() : null;
+    const meta = (user && user.user_metadata) || {};
+    nome = meta.full_name || meta.name || null;
   }
 
-  function pedirNovoLogin() {
-    idToken = null;
-    localStorage.removeItem('despensei_id_token');
-    if (window.google && google.accounts && google.accounts.id) google.accounts.id.prompt();
+  function init(onLogin) {
+    onLoginCallback = onLogin;
+    const s = sessaoSalva_();
+    if (s) {
+      guardarUsuario_(s.user);
+      onLoginCallback && onLoginCallback();
+      return;
+    }
+    iniciarGoogle_(true);
   }
 
-  function logout() {
-    idToken = null;
-    email = null;
-    nome = null;
-    localStorage.removeItem('despensei_id_token');
-    localStorage.removeItem('despensei_email');
-    localStorage.removeItem('despensei_nome');
+  function iniciarGoogle_(pedirLoginAutomatico) {
+    if (!window.google || !google.accounts || !google.accounts.id) {
+      const el = document.getElementById('login-erro-config');
+      if (el) {
+        el.textContent = navigator.onLine
+          ? 'Não foi possível carregar o login do Google. Recarregue a página.'
+          : 'Sem internet. Conecte-se para entrar pela primeira vez.';
+        el.classList.remove('hidden');
+      }
+      return;
+    }
+    if (!googleIniciado) {
+      google.accounts.id.initialize({
+        client_id: DESPENSEI_CONFIG.GOOGLE_CLIENT_ID,
+        callback: aoReceberCredencialGoogle_,
+        auto_select: true
+      });
+      const botao = document.getElementById('google-signin-button');
+      if (botao) {
+        google.accounts.id.renderButton(botao, { theme: 'filled_black', size: 'large', shape: 'pill', text: 'continue_with', width: 280 });
+      }
+      googleIniciado = true;
+    }
+    if (pedirLoginAutomatico) google.accounts.id.prompt();
+  }
+
+  async function aoReceberCredencialGoogle_(response) {
+    const loader = document.getElementById('loader-overlay');
+    if (loader) loader.classList.remove('hidden');
+    try {
+      const { data, error } = await DespenseiApi.cliente.auth.signInWithIdToken({ provider: 'google', token: response.credential });
+      if (error) throw error;
+      guardarUsuario_(data.user);
+      onLoginCallback && onLoginCallback();
+    } catch (err) {
+      const el = document.getElementById('login-erro-config');
+      if (el) {
+        el.textContent = 'Não foi possível entrar: ' + (err.message || err);
+        el.classList.remove('hidden');
+      }
+    } finally {
+      if (loader) loader.classList.add('hidden');
+    }
+  }
+
+  // Sessão recusada pelo servidor (revogada/expirada de vez): volta pra tela de
+  // login. A fila de alterações pendentes fica guardada e é enviada depois que
+  // a mesma conta entrar de novo.
+  async function pedirNovoLogin() {
+    try { await DespenseiApi.cliente.auth.signOut({ scope: 'local' }); } catch (e) { /* ignora */ }
+    document.querySelectorAll('#view-familia, #view-bloqueado, #view-app').forEach(function (v) { v.classList.add('hidden'); });
+    document.getElementById('view-login').classList.remove('hidden');
+    iniciarGoogle_(true);
+  }
+
+  async function logout() {
+    try { await DespenseiApi.cliente.auth.signOut({ scope: 'local' }); } catch (e) { /* ignora */ }
+    try {
+      Object.keys(localStorage).forEach(function (k) {
+        if (k.indexOf('despensei_cache_v3') === 0 || k.indexOf('despensei_carrinho_v3') === 0) localStorage.removeItem(k);
+      });
+    } catch (e) { /* ignora */ }
     if (window.google && google.accounts && google.accounts.id) google.accounts.id.disableAutoSelect();
     location.reload();
   }
 
-  function getIdToken() { return idToken; }
   function getEmail() { return email; }
   function getNome() { return nome; }
 
-  return { init, logout, pedirNovoLogin, getIdToken, getEmail, getNome };
+  return { init, logout, pedirNovoLogin, getEmail, getNome };
 })();
 
 window.DespenseiAuth = DespenseiAuth;
