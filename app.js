@@ -1,9 +1,16 @@
 // ===================== DESPENSEI — LÓGICA DA INTERFACE =====================
 // Versão 3 (Supabase, offline primeiro). O app guarda no aparelho os produtos
 // da família e monta sozinho a Despensa, a Lista de Compras e o Catálogo a
-// partir deles — as mesmas regras que o Codigo.gs aplicava no servidor. Toda
-// mudança do dia a dia (estoque, lista, finalizar compra) aparece na hora e
-// vai pra fila de envio (web/api.js), funcionando mesmo sem internet.
+// partir deles. Toda mudança do dia a dia (estoque, lista, finalizar compra)
+// aparece na hora e vai pra fila de envio (web/api.js), funcionando mesmo sem
+// internet.
+//
+// Regras (v3.1):
+//  - Catálogo = todos os produtos cadastrados (o que PODE ser comprado).
+//  - Despensa = só o que existe em casa (estoque > 0).
+//  - Lista    = só o que alguém pediu (📋 na Despensa/Catálogo, busca da Lista
+//               ou item avulso). Estoque zerado NÃO entra sozinho.
+//  - Carrinho = cada lançamento é uma linha própria (nunca soma lançamentos).
 
 const DespenseiApp = (function () {
   const APP = {
@@ -18,11 +25,14 @@ const DespenseiApp = (function () {
     listaCompras: [],
     catalogo: {},
     produtosCompraveis: [],
-    carrinho: [] // { idProduto, nome, quantidade, precoUnitario, marca }
+    carrinho: [] // { idLinha, idProduto, nome, quantidade, precoUnitario, marca }
   };
 
-  let codigoBarrasPendente = null;
+  let codigoBarrasPendente = null;   // código lido que ainda não pertence a nenhum produto
+  let idSelecionadoCarrinho = null;  // produto escolhido no formulário do carrinho
   let idProdutoEmEdicao = null;
+  let categoriaParaExcluir = null;
+  let aoCriarProduto = null;         // o que fazer depois de cadastrar pelo modal "Novo produto"
   let toastTimer = null;
   let geracaoLocal = 0; // muda a cada alteração local (evita sobrescrever com dado velho do servidor)
   let appVisivel = false;
@@ -33,12 +43,37 @@ const DespenseiApp = (function () {
     'Descartáveis': '🧻', 'Pet': '🐾', 'Farmácia': '💊', 'Avulso': '📌'
   };
 
+  function icone(cat) { return ICONE_CATEGORIA[cat] || '📦'; }
+
   function formatMoeda(v) { return 'R$ ' + (Number(v) || 0).toFixed(2).replace('.', ','); }
 
   function escapeHtml(str) {
     const div = document.createElement('div');
     div.textContent = str == null ? '' : String(str);
-    return div.innerHTML;
+    return div.innerHTML.replace(/"/g, '&quot;');
+  }
+
+  // Busca sem diferenciar maiúscula/acento: "agua" acha "Água Mineral".
+  function normalizar(s) {
+    return String(s == null ? '' : s).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+  }
+
+  function termosBusca(texto) { return normalizar(texto).split(/\s+/).filter(Boolean); }
+
+  // Todas as palavras digitadas precisam aparecer (em qualquer ordem) no nome
+  // ou no código de barras: "lasanha queijo" acha "Lasanha Pif Paf 4 Queijos".
+  function casaBusca(p, termos) {
+    if (!termos.length) return true;
+    const alvo = normalizar(p.nome) + ' ' + String(p.codigoBarras || '');
+    return termos.every(function (t) { return alvo.includes(t); });
+  }
+
+  function compararTexto(a, b) { return String(a || '').localeCompare(String(b || ''), 'pt-BR'); }
+
+  // Categorias em ordem alfabética, com "Avulso"/"Outros" no fim.
+  function ordemCategorias(lista) {
+    const fim = { 'Avulso': 2, 'Outros': 1 };
+    return lista.slice().sort(function (a, b) { return ((fim[a] || 0) - (fim[b] || 0)) || compararTexto(a, b); });
   }
 
   function agruparPorCategoria(lista) {
@@ -57,12 +92,12 @@ const DespenseiApp = (function () {
   function showToast(msg, tipo) {
     const el = document.getElementById('toast');
     el.textContent = msg;
-    el.className = 'toast fixed bottom-24 left-1/2 z-50 px-4 py-2.5 rounded-xl shadow-lg text-sm font-bold text-white max-w-[85%] text-center ' +
+    el.className = 'toast fixed bottom-24 left-1/2 z-[70] px-4 py-2.5 rounded-xl shadow-lg text-sm font-bold text-white max-w-[85%] text-center ' +
       (tipo === 'erro' ? 'bg-terracotta-600' : 'bg-sage-700');
     el.style.transform = 'translateX(-50%)';
     el.classList.remove('hidden');
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(function () { el.classList.add('hidden'); }, 2600);
+    toastTimer = setTimeout(function () { el.classList.add('hidden'); }, tipo === 'erro' ? 4000 : 2600);
   }
 
   function mostrarView(nome) {
@@ -72,10 +107,10 @@ const DespenseiApp = (function () {
     appVisivel = nome === 'app';
   }
 
-  // ===================== REGRAS (mesmas do Codigo.gs) =====================
+  // ===================== REGRAS =====================
 
   function ordenarPorCategoriaENome(a, b) {
-    return String(a.categoria || '').localeCompare(String(b.categoria || '')) || String(a.nome || '').localeCompare(String(b.nome || ''));
+    return compararTexto(a.categoria, b.categoria) || compararTexto(a.nome, b.nome);
   }
 
   function referenciaPreco(p) {
@@ -88,56 +123,48 @@ const DespenseiApp = (function () {
 
   function qtdUltimaCompra(p) { return Number(APP.ultimaQtd[String(p.id)]) || null; }
 
+  function resumoProduto(p) {
+    return {
+      id: p.id, nome: p.nome, categoria: p.categoria || 'Outros',
+      estoqueAtual: Number(p.estoqueAtual) || 0,
+      avulso: !!p.avulso,
+      emListaManual: !!p.emListaManual,
+      qtdDesejada: p.qtdDesejada ? Number(p.qtdDesejada) : null,
+      referenciaPreco: referenciaPreco(p),
+      codigoBarras: p.codigoBarras || '',
+      qtdUltimaCompra: qtdUltimaCompra(p)
+    };
+  }
+
   function recalcular() {
-    // Despensa: ativos, sem os avulsos (avulso não vira cadastro permanente).
-    APP.despensa = APP.produtos.filter(function (p) { return p.ativo && !p.avulso; }).map(function (p) {
-      const estoqueAtual = Number(p.estoqueAtual) || 0;
-      return {
-        id: p.id, nome: p.nome, categoria: p.categoria,
-        estoqueAtual: estoqueAtual, estoqueMinimo: Number(p.estoqueMinimo) || 0,
-        baixoEstoque: estoqueAtual <= 0,
-        referenciaPreco: referenciaPreco(p), codigoBarras: p.codigoBarras || '',
-        tipoCompra: p.tipoCompra || 'unidade', ultimoPeso: p.ultimoPeso ? Number(p.ultimoPeso) : null,
-        emListaManual: !!p.emListaManual, qtdDesejada: p.qtdDesejada ? Number(p.qtdDesejada) : null,
-        qtdUltimaCompra: qtdUltimaCompra(p)
-      };
-    }).sort(ordenarPorCategoriaENome);
+    const todos = APP.produtos.map(resumoProduto);
 
-    // Lista: ativos, não ocultados, com estoque zerado ou pedidos na mão.
-    APP.listaCompras = APP.produtos.filter(function (p) {
-      if (!p.ativo || p.ocultoDaLista) return false;
-      return (Number(p.estoqueAtual) || 0) <= 0 || p.emListaManual;
-    }).map(function (p) {
-      return {
-        id: p.id, nome: p.nome, categoria: p.categoria,
-        estoqueAtual: Number(p.estoqueAtual) || 0, estoqueMinimo: Number(p.estoqueMinimo) || 0,
-        emListaManual: !!p.emListaManual, qtdDesejada: p.qtdDesejada ? Number(p.qtdDesejada) : null,
-        referenciaPreco: referenciaPreco(p), avulso: !!p.avulso, qtdUltimaCompra: qtdUltimaCompra(p)
-      };
-    }).sort(ordenarPorCategoriaENome);
+    // Despensa: só o que existe em casa. Estoque zerado = não está na despensa.
+    APP.despensa = todos.filter(function (p) { return !p.avulso && p.estoqueAtual > 0; }).sort(ordenarPorCategoriaENome);
 
-    // Catálogo: tudo menos avulsos, agrupado pelas categorias da família.
-    APP.categorias.sort(function (a, b) { return a.localeCompare(b); });
+    // Lista: só o que alguém pediu. Nada entra sozinho.
+    APP.listaCompras = todos.filter(function (p) { return p.emListaManual; }).sort(ordenarPorCategoriaENome);
+
+    // Catálogo: todos os produtos cadastrados (menos avulsos), por categoria.
+    APP.categorias.sort(compararTexto);
     const agrupado = {};
     APP.categorias.forEach(function (c) { agrupado[c] = []; });
-    APP.produtos.filter(function (p) { return !p.avulso; }).forEach(function (p) {
-      const cat = p.categoria || 'Outros';
-      if (!agrupado[cat]) agrupado[cat] = [];
-      agrupado[cat].push({ id: p.id, nome: p.nome, categoria: cat, ativo: !!p.ativo, codigoBarras: p.codigoBarras || '' });
+    todos.filter(function (p) { return !p.avulso; }).forEach(function (p) {
+      if (!agrupado[p.categoria]) agrupado[p.categoria] = [];
+      agrupado[p.categoria].push(p);
     });
-    Object.keys(agrupado).forEach(function (cat) { agrupado[cat].sort(function (a, b) { return String(a.nome).localeCompare(String(b.nome)); }); });
+    Object.keys(agrupado).forEach(function (cat) { agrupado[cat].sort(function (a, b) { return compararTexto(a.nome, b.nome); }); });
     APP.catalogo = agrupado;
 
-    // Carrinho: despensa + avulsos da lista.
-    const idsDespensa = {};
-    APP.despensa.forEach(function (p) { idsDespensa[p.id] = true; });
-    APP.produtosCompraveis = APP.despensa.concat(APP.listaCompras.filter(function (p) { return p.avulso && !idsDespensa[p.id]; }));
+    // Carrinho: qualquer produto do catálogo + os avulsos que estão na lista.
+    APP.produtosCompraveis = todos.filter(function (p) { return !p.avulso || p.emListaManual; });
   }
 
   function produto(id) { return APP.produtos.find(function (p) { return String(p.id) === String(id); }); }
 
   function buscarProdutoCompravel(id) {
-    return APP.produtosCompraveis.find(function (p) { return String(p.id) === String(id); });
+    if (id == null) return null;
+    return APP.produtosCompraveis.find(function (p) { return String(p.id) === String(id); }) || null;
   }
 
   // ===================== CÓPIA NO APARELHO =====================
@@ -158,12 +185,17 @@ const DespenseiApp = (function () {
     try { return JSON.parse(localStorage.getItem(chaveCache()) || 'null'); } catch (e) { return null; }
   }
 
+  function novoIdLinha() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
+
   function salvarCarrinho() {
     try { localStorage.setItem(chaveCarrinho(), JSON.stringify(APP.carrinho)); } catch (e) { /* ignora */ }
   }
 
   function lerCarrinho() {
-    try { return JSON.parse(localStorage.getItem(chaveCarrinho()) || '[]'); } catch (e) { return []; }
+    let itens;
+    try { itens = JSON.parse(localStorage.getItem(chaveCarrinho()) || '[]'); } catch (e) { itens = []; }
+    // Carrinhos de versões anteriores não tinham id por linha.
+    return (Array.isArray(itens) ? itens : []).map(function (i) { return Object.assign({ idLinha: novoIdLinha() }, i); });
   }
 
   // Toda alteração local passa por aqui: recalcula, desenha e guarda.
@@ -478,9 +510,11 @@ const DespenseiApp = (function () {
     renderDespensa();
     renderListaCompras();
     renderSelectEstabelecimentos();
-    renderSelectProdutos();
+    Object.keys(seletores).forEach(renderSeletor);
+    renderProdutoEscolhido();
+    renderCodigoPendente();
     renderCatalogo();
-    renderSelectCategorias();
+    renderCategoriasLista();
     renderEstabelecimentosLista();
     renderCarrinho();
     renderInfoFamilia();
@@ -507,24 +541,151 @@ const DespenseiApp = (function () {
     el.className = 'text-[11px] font-semibold rounded-lg border px-2.5 py-1 mx-4 mb-2 text-center ' + classe + (texto ? '' : ' hidden');
   }
 
+  function tituloCategoria(cat) {
+    return `<h3 class="text-xs font-extrabold text-sage-800 bg-sage-100 uppercase tracking-wide mb-2 px-3 py-1.5 rounded-lg">${icone(cat)} ${escapeHtml(cat)}</h3>`;
+  }
+
+  // ===================== SELETOR DE PRODUTOS (busca + categorias recolhíveis) =====================
+  // Usado no Carrinho, na Lista e na Despensa. Abre com todas as categorias
+  // recolhidas; ao digitar, mostra só os produtos que batem com a busca, com
+  // as categorias deles já abertas.
+  const seletores = {
+    carrinho: {
+      busca: '', abertas: {}, grupoLista: true, podeCriar: true,
+      itens: function () { return APP.produtosCompraveis; },
+      aoEscolher: function (id) { selecionarProdutoCarrinho(id); }
+    },
+    lista: {
+      busca: '', abertas: {}, podeCriar: true, soBusca: true,
+      itens: function () { return APP.produtosCompraveis.filter(function (p) { return !p.avulso; }); },
+      aoEscolher: function (id) { adicionarComoDesejo(id); }
+    },
+    despensa: {
+      busca: '', abertas: {}, podeCriar: true,
+      itens: function () { return APP.produtosCompraveis.filter(function (p) { return !p.avulso; }); },
+      aoEscolher: function (id) { adicionarNaDespensa(id); }
+    }
+  };
+
+  function infoProdutoSeletor(p) {
+    const partes = [];
+    if (p.estoqueAtual > 0 && !p.avulso) partes.push('em casa: ' + p.estoqueAtual);
+    if (p.emListaManual) partes.push('📋 na lista');
+    if (p.referenciaPreco) partes.push(formatMoeda(p.referenciaPreco.preco));
+    return partes.join(' · ');
+  }
+
+  function blocoCategoriaSeletor(idSeletor, chave, rotulo, itens, aberta) {
+    return `
+      <div class="rounded-xl border border-sage-200 overflow-hidden">
+        <button type="button" data-cat="${escapeHtml(chave)}" onclick="DespenseiApp.alternarCategoriaSeletor('${idSeletor}', this.dataset.cat)"
+          class="w-full flex items-center justify-between gap-2 px-3 py-2.5 bg-sage-100 active:bg-sage-200 text-left">
+          <span class="font-extrabold text-[13px] text-sage-800 uppercase tracking-wide truncate">${rotulo}</span>
+          <span class="flex items-center gap-2 shrink-0">
+            <span class="text-[11px] font-bold text-sage-700 bg-white/70 rounded-full px-2 py-0.5">${itens.length}</span>
+            <svg class="w-3.5 h-3.5 text-sage-700 transition-transform ${aberta ? 'rotate-180' : ''}" viewBox="0 0 12 8" fill="none"><path d="M1 1l5 5 5-5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+          </span>
+        </button>
+        ${aberta ? `<div class="divide-y divide-sand-100 bg-white">
+          ${itens.map(function (p) {
+            const info = infoProdutoSeletor(p);
+            return `<button type="button" onclick="DespenseiApp.escolherNoSeletor('${idSeletor}', '${p.id}')"
+              class="w-full text-left px-3.5 py-2.5 active:bg-sage-50 flex items-center justify-between gap-2">
+              <span class="text-sm text-sand-900 min-w-0">${escapeHtml(p.nome)}${p.avulso ? ' <span class="text-[10px] font-extrabold text-sand-600 bg-sand-200 rounded-full px-1.5">AVULSO</span>' : ''}</span>
+              ${info ? `<span class="text-[11px] text-sand-500 shrink-0 text-right">${escapeHtml(info)}</span>` : ''}
+            </button>`;
+          }).join('')}
+        </div>` : ''}
+      </div>`;
+  }
+
+  function renderSeletor(id) {
+    const s = seletores[id];
+    const raiz = document.getElementById('seletor-' + id);
+    if (!s || !raiz) return;
+    const lista = raiz.querySelector('.seletor-lista');
+    const termos = termosBusca(s.busca);
+    const buscando = termos.length > 0;
+    if (s.soBusca && !buscando) { lista.innerHTML = ''; return; }
+    const itens = s.itens().filter(function (p) { return casaBusca(p, termos); });
+    const grupos = agruparPorCategoria(itens);
+
+    let html = '';
+    if (s.grupoLista && !buscando) {
+      const naLista = itens.filter(function (p) { return p.emListaManual; });
+      if (naLista.length) html += blocoCategoriaSeletor(id, '__lista', '📋 Na lista de compras', naLista, !!s.abertas.__lista);
+    }
+    html += ordemCategorias(Object.keys(grupos)).map(function (cat) {
+      return blocoCategoriaSeletor(id, cat, icone(cat) + ' ' + escapeHtml(cat), grupos[cat], buscando || !!s.abertas[cat]);
+    }).join('');
+
+    if (!itens.length) {
+      html = `<p class="text-center text-sm text-sand-500 py-3">${buscando
+        ? 'Nenhum produto encontrado para "<b>' + escapeHtml(s.busca.trim()) + '</b>".'
+        : 'Nenhum produto cadastrado ainda.'}</p>`;
+    }
+    if (buscando && s.podeCriar) {
+      html += `<button type="button" onclick="DespenseiApp.criarPeloSeletor('${id}')"
+        class="w-full border border-dashed border-sage-400 text-sage-700 font-bold rounded-xl py-2.5 text-xs active:bg-sage-50">
+        + Cadastrar "${escapeHtml(s.busca.trim())}" como novo produto
+      </button>`;
+    }
+    lista.innerHTML = html;
+  }
+
+  function buscarNoSeletor(id, valor) {
+    seletores[id].busca = valor || '';
+    renderSeletor(id);
+  }
+
+  function alternarCategoriaSeletor(id, cat) {
+    const s = seletores[id];
+    s.abertas[cat] = !s.abertas[cat];
+    renderSeletor(id);
+  }
+
+  function limparSeletor(id) {
+    const s = seletores[id];
+    s.busca = '';
+    s.abertas = {};
+    const raiz = document.getElementById('seletor-' + id);
+    const input = raiz && raiz.querySelector('.seletor-busca');
+    if (input) input.value = '';
+    renderSeletor(id);
+  }
+
+  function escolherNoSeletor(id, idProduto) {
+    limparSeletor(id);
+    seletores[id].aoEscolher(idProduto);
+  }
+
+  function criarPeloSeletor(id) {
+    const s = seletores[id];
+    const nome = s.busca.trim();
+    abrirModalNovoProduto(nome, id === 'carrinho' ? codigoBarrasPendente : '', function (novoId) {
+      limparSeletor(id);
+      s.aoEscolher(novoId);
+    });
+  }
+
   // ===================== DESPENSA =====================
 
   function renderDespensa() {
     const container = document.getElementById('despensa-lista');
     if (!APP.despensa.length) {
       container.innerHTML = `
-        <div class="text-center py-16 px-4">
+        <div class="text-center py-12 px-4">
           <p class="text-4xl mb-2">🌿</p>
-          <p class="text-sand-600 font-semibold mb-1">Sua despensa está vazia por aqui</p>
-          <p class="text-sand-500 text-sm">Vá em <b>Catálogo</b> e ative os produtos que você costuma comprar.</p>
+          <p class="text-sand-600 font-semibold mb-1">Nada na despensa por enquanto</p>
+          <p class="text-sand-500 text-sm">Os produtos aparecem aqui quando você finaliza uma compra ou usa o botão <b>+ Já tenho em casa</b> acima.</p>
         </div>`;
       return;
     }
 
     const porCategoria = agruparPorCategoria(APP.despensa);
-    container.innerHTML = Object.keys(porCategoria).sort().map(cat => `
+    container.innerHTML = ordemCategorias(Object.keys(porCategoria)).map(cat => `
       <div>
-        <h3 class="text-xs font-extrabold text-sand-500 uppercase tracking-wide mb-2 px-1">${ICONE_CATEGORIA[cat] || '📦'} ${escapeHtml(cat)}</h3>
+        ${tituloCategoria(cat)}
         <div class="space-y-2">
           ${porCategoria[cat].map(cardDespensaItem).join('')}
         </div>
@@ -533,20 +694,17 @@ const DespenseiApp = (function () {
   }
 
   function cardDespensaItem(p) {
-    const baixo = p.baixoEstoque;
     return `
-      <div class="bg-white rounded-2xl p-3 shadow-sm border ${baixo ? 'border-terracotta-300' : 'border-sand-100'} flex items-center gap-3">
+      <div class="bg-white rounded-2xl p-3 shadow-sm border border-sand-100 flex items-center gap-3">
         <div class="flex-1 min-w-0">
-          <div class="flex items-center gap-1.5">
-            <p class="font-bold text-sm text-sand-900 truncate">${escapeHtml(p.nome)}</p>
-            ${baixo ? '<span class="shrink-0 bg-terracotta-100 text-terracotta-600 text-[10px] font-extrabold px-1.5 py-0.5 rounded-full">REPOR</span>' : ''}
-          </div>
+          <p class="font-bold text-sm text-sand-900 truncate">${escapeHtml(p.nome)}</p>
           ${p.referenciaPreco ? `<p class="text-[11px] text-sand-500 mt-0.5 truncate">Último pago: ${escapeHtml(p.referenciaPreco.texto)}</p>` : `<p class="text-[11px] text-sand-400 mt-0.5">Sem histórico de preço</p>`}
+          ${p.emListaManual ? `<p class="text-[11px] text-sage-700 font-bold mt-0.5">📋 Na lista de compras</p>` : ''}
         </div>
-        <button onclick="DespenseiApp.adicionarComoDesejo('${p.id}')" class="shrink-0 w-9 h-9 rounded-full bg-sand-50 text-sand-500 active:bg-sand-100 flex items-center justify-center" title="Adicionar à lista mesmo com estoque">📋</button>
+        <button onclick="DespenseiApp.alternarLista('${p.id}')" class="shrink-0 w-9 h-9 rounded-full ${p.emListaManual ? 'bg-sage-600 text-white' : 'bg-sand-50 text-sand-500'} active:scale-95 flex items-center justify-center" title="${p.emListaManual ? 'Tirar da lista de compras' : 'Adicionar à lista de compras'}">📋</button>
         <div class="flex items-center gap-2.5 shrink-0">
           <button onclick="DespenseiApp.mudarEstoque('${p.id}', -1)" class="stepper-btn w-11 h-11 rounded-full bg-sand-100 text-sand-700 font-extrabold text-xl active:bg-sand-200 flex items-center justify-center">–</button>
-          <span class="w-7 text-center font-extrabold text-lg ${baixo ? 'text-terracotta-600' : 'text-sage-700'}">${p.estoqueAtual}</span>
+          <span class="w-7 text-center font-extrabold text-lg text-sage-700">${p.estoqueAtual}</span>
           <button onclick="DespenseiApp.mudarEstoque('${p.id}', 1)" class="stepper-btn w-11 h-11 rounded-full bg-sage-600 text-white font-extrabold text-xl active:bg-sage-700 flex items-center justify-center">+</button>
         </div>
       </div>`;
@@ -555,16 +713,56 @@ const DespenseiApp = (function () {
   function mudarEstoque(idProduto, delta) {
     const p = produto(idProduto);
     if (!p) return;
-    p.estoqueAtual = Math.max(0, (Number(p.estoqueAtual) || 0) + delta);
+    const antes = Number(p.estoqueAtual) || 0;
+    const depois = Math.max(0, antes + delta);
+    if (depois === antes) return;
+    p.estoqueAtual = depois;
     p.ocultoDaLista = false;
     mudouLocal();
-    DespenseiApi.enfileirar('atualizar_estoque', { p_produto_id: Number(p.id), p_delta: delta }, 'Estoque de ' + p.nome);
+    DespenseiApi.enfileirar('atualizar_estoque', { p_produto_id: Number(p.id), p_delta: depois - antes }, 'Estoque de ' + p.nome);
+
+    // Acabou: sai da despensa. Pergunta se quer comprar de novo (não é automático).
+    if (antes > 0 && depois === 0 && !p.emListaManual && !p.avulso) {
+      setTimeout(function () {
+        if (confirm(`"${p.nome}" acabou e saiu da despensa.\n\nQuer adicioná-lo à lista de compras?`)) {
+          colocarNaLista(p, qtdUltimaCompra(p));
+        }
+      }, 50);
+    }
   }
 
-  // Adicionar à lista mesmo com estoque, sugerindo a quantidade da última compra.
+  // "Já tenho em casa": soma estoque sem precisar passar pelo carrinho.
+  function adicionarNaDespensa(idProduto) {
+    const p = produto(idProduto);
+    if (!p) return;
+    const atual = Number(p.estoqueAtual) || 0;
+    const valor = window.prompt(
+      atual > 0
+        ? `"${p.nome}": você já tem ${atual} em casa. Quantas unidades a mais?`
+        : `Quantas unidades de "${p.nome}" você tem em casa?`,
+      '1');
+    if (valor === null) return;
+    const qtd = parseInt(valor, 10);
+    if (isNaN(qtd) || qtd <= 0) { showToast('Informe uma quantidade maior que zero.', 'erro'); return; }
+    mudarEstoque(p.id, qtd);
+    showToast(p.nome + ': ' + (atual + qtd) + ' em casa.');
+  }
+
+  function colocarNaLista(p, qtd) {
+    p.emListaManual = true;
+    p.qtdDesejada = qtd || null;
+    p.ocultoDaLista = false;
+    mudouLocal();
+    DespenseiApi.enfileirar('adicionar_item_manual_lista',
+      { p_produto_id: Number(p.id), p_qtd_desejada: qtd || null }, p.nome + ' na lista');
+    showToast(p.nome + ' adicionado à lista de compras!');
+  }
+
+  // Adicionar à lista, sugerindo a quantidade da última compra.
   function adicionarComoDesejo(idProduto) {
     const p = produto(idProduto);
     if (!p) return;
+    if (p.emListaManual) { showToast(p.nome + ' já está na lista de compras.'); return; }
     const sugestao = qtdUltimaCompra(p) || '';
     const valor = window.prompt(
       `Quantidade desejada de "${p.nome}"${sugestao ? ' (última vez você comprou ' + sugestao + ')' : ''}:`,
@@ -572,13 +770,14 @@ const DespenseiApp = (function () {
     );
     if (valor === null) return;
     const qtd = parseInt(valor, 10);
-    p.emListaManual = true;
-    p.qtdDesejada = isNaN(qtd) || qtd === 0 ? null : qtd;
-    p.ocultoDaLista = false;
-    mudouLocal();
-    DespenseiApi.enfileirar('adicionar_item_manual_lista',
-      { p_produto_id: Number(p.id), p_qtd_desejada: isNaN(qtd) ? null : qtd }, p.nome + ' na lista');
-    showToast(p.nome + ' adicionado à lista de compras!');
+    colocarNaLista(p, isNaN(qtd) || qtd <= 0 ? null : qtd);
+  }
+
+  function alternarLista(idProduto) {
+    const p = produto(idProduto);
+    if (!p) return;
+    if (p.emListaManual) removerItemLista(idProduto);
+    else adicionarComoDesejo(idProduto);
   }
 
   // ===================== LISTA DE COMPRAS =====================
@@ -587,17 +786,18 @@ const DespenseiApp = (function () {
     const container = document.getElementById('lista-compras');
     if (!APP.listaCompras.length) {
       container.innerHTML = `
-        <div class="text-center py-16 px-4">
+        <div class="text-center py-12 px-4">
           <p class="text-4xl mb-2">✅</p>
-          <p class="text-sand-600 font-semibold">Nada em falta por enquanto!</p>
+          <p class="text-sand-600 font-semibold">Sua lista está vazia.</p>
+          <p class="text-sand-500 text-sm mt-1">Use a busca acima, o botão 📋 na Despensa/Catálogo ou adicione um item avulso.</p>
         </div>`;
       return;
     }
 
     const porCategoria = agruparPorCategoria(APP.listaCompras);
-    container.innerHTML = Object.keys(porCategoria).sort().map(cat => `
+    container.innerHTML = ordemCategorias(Object.keys(porCategoria)).map(cat => `
       <div>
-        <h3 class="text-xs font-extrabold text-sand-500 uppercase tracking-wide mb-2 px-1">${ICONE_CATEGORIA[cat] || '📦'} ${escapeHtml(cat)}</h3>
+        ${tituloCategoria(cat)}
         <div class="space-y-2">
           ${porCategoria[cat].map(cardListaItem).join('')}
         </div>
@@ -613,11 +813,11 @@ const DespenseiApp = (function () {
             <p class="font-bold text-sm text-sand-900 truncate">${escapeHtml(p.nome)}</p>
             ${p.avulso ? '<span class="shrink-0 bg-sand-200 text-sand-700 text-[10px] font-extrabold px-1.5 py-0.5 rounded-full">AVULSO</span>' : ''}
           </div>
-          ${!p.avulso ? `<p class="text-[11px] text-sand-500 mt-0.5">Estoque: ${p.estoqueAtual}/${p.estoqueMinimo}</p>` : ''}
-          ${p.referenciaPreco ? `<p class="text-[11px] text-sage-700 mt-0.5 font-semibold truncate">Último pago: ${escapeHtml(p.referenciaPreco.texto)}</p>` : `<p class="text-[11px] text-sand-400 mt-0.5">Sem histórico de preço</p>`}
-          ${p.qtdUltimaCompra ? `<p class="text-[11px] text-sand-500 mt-0.5">Última vez você comprou: <b>${p.qtdUltimaCompra}</b></p>` : ''}
+          ${p.qtdDesejada ? `<p class="text-[11px] text-sand-700 mt-0.5">Comprar: <b>${p.qtdDesejada}</b></p>` : ''}
+          ${!p.avulso && p.estoqueAtual > 0 ? `<p class="text-[11px] text-sand-500 mt-0.5">Em casa: ${p.estoqueAtual}</p>` : ''}
+          ${p.referenciaPreco ? `<p class="text-[11px] text-sage-700 mt-0.5 font-semibold truncate">Último pago: ${escapeHtml(p.referenciaPreco.texto)}</p>` : ''}
         </div>
-        <button onclick="DespenseiApp.adicionarRapidoAoCarrinho('${p.id}')" class="shrink-0 bg-sage-100 text-sage-700 font-bold rounded-xl px-3 py-2 text-xs active:scale-95 transition">+ Carrinho</button>
+        <button onclick="DespenseiApp.levarAoCarrinho('${p.id}')" class="shrink-0 bg-sage-100 text-sage-700 font-bold rounded-xl px-3 py-2 text-xs active:scale-95 transition">+ Carrinho</button>
         <button onclick="DespenseiApp.removerItemLista('${p.id}')" class="shrink-0 w-8 h-8 rounded-full bg-terracotta-50 text-terracotta-600 font-bold active:bg-terracotta-100 flex items-center justify-center" aria-label="Remover da lista">✕</button>
       </div>`;
   }
@@ -628,6 +828,7 @@ const DespenseiApp = (function () {
     if (p.avulso) {
       APP.produtos = APP.produtos.filter(function (x) { return x !== p; });
       APP.carrinho = APP.carrinho.filter(function (i) { return String(i.idProduto) !== String(idProduto); });
+      if (String(idSelecionadoCarrinho) === String(idProduto)) idSelecionadoCarrinho = null;
       salvarCarrinho();
     } else {
       p.emListaManual = false;
@@ -636,30 +837,16 @@ const DespenseiApp = (function () {
     }
     mudouLocal();
     DespenseiApi.enfileirar('remover_item_manual_lista', { p_produto_id: Number(p.id) }, p.nome + ' fora da lista');
-    showToast('Removido da lista.');
+    showToast(p.nome + ' saiu da lista.');
   }
 
-  function adicionarRapidoAoCarrinho(idProduto) {
-    const p = buscarProdutoCompravel(idProduto);
-    if (!p) return;
-
-    const existente = APP.carrinho.find(i => String(i.idProduto) === String(idProduto));
-    if (existente) {
-      existente.quantidade += 1;
-    } else {
-      APP.carrinho.push({
-        idProduto: p.id,
-        nome: p.nome,
-        quantidade: p.qtdUltimaCompra || 1,
-        precoUnitario: p.referenciaPreco ? p.referenciaPreco.preco : 0,
-        marca: p.referenciaPreco ? p.referenciaPreco.marca : ''
-      });
-    }
-    salvarCarrinho();
-    renderCarrinho();
-    atualizarBadges();
-    showToast(p.nome + ' adicionado ao carrinho');
+  // Da lista para o formulário do carrinho, já com o produto escolhido:
+  // falta só conferir o preço e tocar em "Adicionar ao Carrinho".
+  function levarAoCarrinho(idProduto) {
+    if (!buscarProdutoCompravel(idProduto)) return;
     switchTab('carrinho');
+    codigoBarrasPendente = null;
+    selecionarProdutoCarrinho(idProduto);
   }
 
   // Item pontual, fora do catálogo — some da lista assim que comprado.
@@ -692,38 +879,48 @@ const DespenseiApp = (function () {
     if (atual) sel.value = atual;
   }
 
-  function renderSelectProdutos() {
-    const sel = document.getElementById('select-produto');
-    const atual = sel.value;
-    const porCategoria = agruparPorCategoria(APP.produtosCompraveis);
-    sel.innerHTML = '<option value="">Selecione um item…</option>' +
-      Object.keys(porCategoria).sort().map(cat => `
-        <optgroup label="${ICONE_CATEGORIA[cat] || ''} ${escapeHtml(cat)}">
-          ${porCategoria[cat].map(p => `<option value="${p.id}">${escapeHtml(p.nome)}</option>`).join('')}
-        </optgroup>
-      `).join('');
-    if (atual) sel.value = atual;
-  }
-
-  function aoSelecionarProduto() {
-    const id = document.getElementById('select-produto').value;
-    const p = buscarProdutoCompravel(id);
-    document.getElementById('input-qtd').value = (p && p.qtdUltimaCompra) || 1;
-    if (p && p.referenciaPreco) {
+  function selecionarProdutoCarrinho(idProduto) {
+    const p = buscarProdutoCompravel(idProduto);
+    if (!p) return;
+    idSelecionadoCarrinho = String(p.id);
+    document.getElementById('input-qtd').value = p.qtdDesejada || p.qtdUltimaCompra || 1;
+    if (p.referenciaPreco) {
       document.getElementById('input-preco').value = p.referenciaPreco.preco.toFixed(2);
       document.getElementById('input-marca').value = p.referenciaPreco.marca || '';
     } else {
       document.getElementById('input-preco').value = '';
       document.getElementById('input-marca').value = '';
     }
-    document.getElementById('btn-vincular-codigo').classList.add('hidden');
+    renderProdutoEscolhido();
+    renderCodigoPendente();
     atualizarIndicadorPreco();
+    document.getElementById('carrinho-form').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  function renderProdutoEscolhido() {
+    const p = buscarProdutoCompravel(idSelecionadoCarrinho);
+    if (!p) idSelecionadoCarrinho = null;
+    document.getElementById('carrinho-escolhido').classList.toggle('hidden', !p);
+    document.getElementById('carrinho-campos').classList.toggle('hidden', !p);
+    document.getElementById('seletor-carrinho').classList.toggle('hidden', !!p);
+    if (p) {
+      document.getElementById('carrinho-escolhido-nome').textContent = p.nome;
+      document.getElementById('carrinho-escolhido-cat').textContent = icone(p.categoria) + ' ' + p.categoria;
+    }
+  }
+
+  function trocarProdutoCarrinho() {
+    idSelecionadoCarrinho = null;
+    document.getElementById('indicador-preco').textContent = '';
+    renderProdutoEscolhido();
+    renderCodigoPendente();
+    const input = document.querySelector('#seletor-carrinho .seletor-busca');
+    if (input) input.focus();
   }
 
   // Variação de preço em relação à última compra.
   function atualizarIndicadorPreco() {
-    const idProduto = document.getElementById('select-produto').value;
-    const p = buscarProdutoCompravel(idProduto);
+    const p = buscarProdutoCompravel(idSelecionadoCarrinho);
     const el = document.getElementById('indicador-preco');
     const precoDigitado = parseFloat(document.getElementById('input-preco').value);
 
@@ -748,32 +945,27 @@ const DespenseiApp = (function () {
     input.value = Math.max(1, (parseInt(input.value, 10) || 1) + delta);
   }
 
+  // Cada toque em "Adicionar" vira um lançamento próprio no carrinho, com seu
+  // preço e quantidade — nunca é somado a outro lançamento.
   function adicionarItemCarrinho() {
-    const idProduto = document.getElementById('select-produto').value;
-    const p = buscarProdutoCompravel(idProduto);
-    const preco = parseFloat(document.getElementById('input-preco').value);
+    const p = buscarProdutoCompravel(idSelecionadoCarrinho);
+    const preco = parseFloat(String(document.getElementById('input-preco').value).replace(',', '.'));
     const qtd = parseInt(document.getElementById('input-qtd').value, 10) || 1;
     const marca = document.getElementById('input-marca').value.trim();
 
-    if (!p) { showToast('Selecione um produto.', 'erro'); return; }
+    if (!p) { showToast('Escolha um produto.', 'erro'); return; }
     if (isNaN(preco) || preco < 0) { showToast('Informe um preço válido.', 'erro'); return; }
 
-    const existente = APP.carrinho.find(i => String(i.idProduto) === String(idProduto));
-    if (existente) {
-      existente.quantidade += qtd;
-      existente.precoUnitario = preco;
-      existente.marca = marca;
-    } else {
-      APP.carrinho.push({ idProduto: p.id, nome: p.nome, quantidade: qtd, precoUnitario: preco, marca: marca });
-    }
+    APP.carrinho.push({ idLinha: novoIdLinha(), idProduto: p.id, nome: p.nome, quantidade: qtd, precoUnitario: preco, marca: marca });
 
-    document.getElementById('select-produto').value = '';
+    idSelecionadoCarrinho = null;
+    codigoBarrasPendente = null;
     document.getElementById('input-preco').value = '';
     document.getElementById('input-qtd').value = 1;
     document.getElementById('input-marca').value = '';
     document.getElementById('indicador-preco').textContent = '';
-    document.getElementById('btn-vincular-codigo').classList.add('hidden');
-    codigoBarrasPendente = null;
+    renderProdutoEscolhido();
+    renderCodigoPendente();
 
     salvarCarrinho();
     renderCarrinho();
@@ -781,8 +973,8 @@ const DespenseiApp = (function () {
     showToast(p.nome + ' adicionado!');
   }
 
-  function removerItemCarrinho(idProduto) {
-    APP.carrinho = APP.carrinho.filter(i => String(i.idProduto) !== String(idProduto));
+  function removerItemCarrinho(idLinha) {
+    APP.carrinho = APP.carrinho.filter(i => String(i.idLinha) !== String(idLinha));
     salvarCarrinho();
     renderCarrinho();
     atualizarBadges();
@@ -802,10 +994,10 @@ const DespenseiApp = (function () {
     container.innerHTML = APP.carrinho.map(i => `
       <div class="bg-white rounded-2xl p-3 shadow-sm border border-sand-100 flex items-center gap-3">
         <div class="flex-1 min-w-0">
-          <p class="font-bold text-sm text-sand-900 truncate">${escapeHtml(i.nome)}${i.marca ? ` <span class="text-sand-400 font-normal">(${escapeHtml(i.marca)})</span>` : ''}</p>
+          <p class="font-bold text-sm text-sand-900">${escapeHtml(i.nome)}${i.marca ? ` <span class="text-sand-400 font-normal">(${escapeHtml(i.marca)})</span>` : ''}</p>
           <p class="text-[11px] text-sand-500">${i.quantidade} × ${formatMoeda(i.precoUnitario)} = <b class="text-sage-700">${formatMoeda(i.quantidade * i.precoUnitario)}</b></p>
         </div>
-        <button onclick="DespenseiApp.removerItemCarrinho('${i.idProduto}')" class="shrink-0 w-9 h-9 rounded-full bg-terracotta-50 text-terracotta-600 font-bold active:bg-terracotta-100 flex items-center justify-center">✕</button>
+        <button onclick="DespenseiApp.removerItemCarrinho('${i.idLinha}')" class="shrink-0 w-9 h-9 rounded-full bg-terracotta-50 text-terracotta-600 font-bold active:bg-terracotta-100 flex items-center justify-center" aria-label="Remover do carrinho">✕</button>
       </div>
     `).join('');
   }
@@ -828,7 +1020,7 @@ const DespenseiApp = (function () {
     try {
       const novo = await chamarOnline('adicionar_estabelecimento', { p_nome: nome });
       APP.estabelecimentos.push(novo);
-      APP.estabelecimentos.sort((a, b) => String(a.nome).localeCompare(String(b.nome)));
+      APP.estabelecimentos.sort((a, b) => compararTexto(a.nome, b.nome));
       salvarCache();
       renderSelectEstabelecimentos();
       renderEstabelecimentosLista();
@@ -858,6 +1050,9 @@ const DespenseiApp = (function () {
     }));
     const valorTotal = itens.reduce((s, i) => s + i.quantidade * i.precoUnitario, 0);
 
+    const qtdPorProduto = {};
+    itens.forEach(function (it) { qtdPorProduto[it.idProduto] = (qtdPorProduto[it.idProduto] || 0) + it.quantidade; });
+
     itens.forEach(function (it) {
       const p = produto(it.idProduto);
       if (!p) return;
@@ -870,7 +1065,7 @@ const DespenseiApp = (function () {
       p.qtdDesejada = null;
       p.ocultoDaLista = false;
       if (p.avulso) p.ativo = false;
-      APP.ultimaQtd[String(p.id)] = it.quantidade;
+      APP.ultimaQtd[String(p.id)] = qtdPorProduto[it.idProduto];
     });
 
     APP.carrinho = [];
@@ -885,38 +1080,81 @@ const DespenseiApp = (function () {
 
   // ===================== CÓDIGO DE BARRAS =====================
 
+  // Compara só os dígitos e ignora zeros à esquerda (UPC-A de 12 dígitos e
+  // EAN-13 com zero na frente são o mesmo produto).
+  function chaveCodigo(c) { return String(c || '').replace(/\D/g, '').replace(/^0+/, ''); }
+
+  function produtoPorCodigo(codigo) {
+    const chave = chaveCodigo(codigo);
+    if (!chave) return null;
+    return APP.produtos.find(x => chaveCodigo(x.codigoBarras) === chave) || null;
+  }
+
   function abrirScanner() {
     DespenseiBarcode.iniciar(function (codigo) {
-      codigo = String(codigo || '').trim();
-      const p = APP.produtos.find(x => String(x.codigoBarras || '').trim() === codigo);
+      const p = produtoPorCodigo(codigo);
       if (p && buscarProdutoCompravel(p.id)) {
-        document.getElementById('select-produto').value = p.id;
-        aoSelecionarProduto();
+        codigoBarrasPendente = null;
+        selecionarProdutoCarrinho(p.id);
         showToast(p.nome + ' reconhecido!');
-      } else if (p) {
-        showToast(p.nome + ' reconhecido, mas não está ativo na sua despensa. Ative-o no Catálogo.', 'erro');
       } else {
         codigoBarrasPendente = codigo;
-        document.getElementById('btn-vincular-codigo').classList.remove('hidden');
-        showToast('Código não reconhecido. Selecione o produto e toque em "Vincular código".', 'erro');
+        idSelecionadoCarrinho = null;
+        renderProdutoEscolhido();
+        renderCodigoPendente();
+        const input = document.querySelector('#seletor-carrinho .seletor-busca');
+        if (input) input.focus();
       }
     });
   }
 
+  // Aviso de código lido que ainda não está cadastrado: o usuário escolhe o
+  // produto (busca/categorias logo abaixo) e confirma o vínculo, ou cadastra
+  // um produto novo já com esse código.
+  function renderCodigoPendente() {
+    const el = document.getElementById('carrinho-codigo-pendente');
+    if (!codigoBarrasPendente) { el.classList.add('hidden'); el.innerHTML = ''; return; }
+    const p = buscarProdutoCompravel(idSelecionadoCarrinho);
+    const cod = escapeHtml(codigoBarrasPendente);
+    el.innerHTML = p
+      ? `<p class="text-xs text-sand-800 mb-2">Vincular o código <b class="tracking-wider">${cod}</b> a <b>${escapeHtml(p.nome)}</b>? Na próxima leitura ele será reconhecido sozinho.</p>
+         <div class="flex gap-2">
+           <button onclick="DespenseiApp.vincularCodigoPendente()" class="flex-1 bg-sage-600 text-white font-bold rounded-xl py-2 text-xs active:scale-[0.98]">🔗 Vincular</button>
+           <button onclick="DespenseiApp.descartarCodigoPendente()" class="flex-1 bg-sand-100 text-sand-700 font-bold rounded-xl py-2 text-xs active:scale-[0.98]">Agora não</button>
+         </div>`
+      : `<p class="text-xs text-sand-800 mb-2">Código <b class="tracking-wider">${cod}</b> ainda não está cadastrado. Procure abaixo o produto a que ele pertence, ou cadastre um produto novo.</p>
+         <div class="flex gap-2">
+           <button onclick="DespenseiApp.novoProdutoComCodigo()" class="flex-1 bg-sage-600 text-white font-bold rounded-xl py-2 text-xs active:scale-[0.98]">+ Cadastrar novo produto</button>
+           <button onclick="DespenseiApp.descartarCodigoPendente()" class="flex-1 bg-sand-100 text-sand-700 font-bold rounded-xl py-2 text-xs active:scale-[0.98]">Descartar código</button>
+         </div>`;
+    el.classList.remove('hidden');
+  }
+
+  function descartarCodigoPendente() {
+    codigoBarrasPendente = null;
+    renderCodigoPendente();
+  }
+
+  function novoProdutoComCodigo() {
+    abrirModalNovoProduto('', codigoBarrasPendente, function (novoId) {
+      codigoBarrasPendente = null;
+      selecionarProdutoCarrinho(novoId);
+    });
+  }
+
   async function vincularCodigoPendente() {
-    const idProduto = document.getElementById('select-produto').value;
-    if (!idProduto) { showToast('Selecione um produto primeiro.', 'erro'); return; }
+    const p = buscarProdutoCompravel(idSelecionadoCarrinho);
+    if (!p) { showToast('Escolha um produto primeiro.', 'erro'); return; }
     if (!codigoBarrasPendente) return;
 
     showLoader();
     try {
-      await chamarOnline('vincular_codigo_barras', { p_produto_id: Number(idProduto), p_codigo_barras: codigoBarrasPendente });
-      const p = produto(idProduto);
-      if (p) p.codigoBarras = codigoBarrasPendente;
-      mudouLocal({ render: false });
-      showToast('Código vinculado!');
+      await chamarOnline('vincular_codigo_barras', { p_produto_id: Number(p.id), p_codigo_barras: codigoBarrasPendente });
+      const cru = produto(p.id);
+      if (cru) cru.codigoBarras = codigoBarrasPendente;
       codigoBarrasPendente = null;
-      document.getElementById('btn-vincular-codigo').classList.add('hidden');
+      mudouLocal();
+      showToast('Código vinculado a ' + p.nome + '!');
     } catch (err) {
       tratarErro(err);
     } finally {
@@ -924,83 +1162,79 @@ const DespenseiApp = (function () {
     }
   }
 
-  function abrirScannerParaEdicao() {
+  function abrirScannerParaCampo(idCampo) {
     DespenseiBarcode.iniciar(function (codigo) {
-      document.getElementById('editar-produto-codigo-barras').value = codigo;
+      document.getElementById(idCampo).value = codigo;
     });
   }
 
-  // ===================== CATÁLOGO / CONFIGURAÇÕES =====================
+  // ===================== CATÁLOGO =====================
 
-  function renderSelectCategorias() {
-    const sel = document.getElementById('novo-produto-categoria');
-    const atual = sel.value;
-    sel.innerHTML = APP.categorias.map(c => `<option value="${escapeHtml(c)}">${ICONE_CATEGORIA[c] || ''} ${escapeHtml(c)}</option>`).join('');
-    if (atual) sel.value = atual;
+  function opcoesCategorias(selecionada, excluir) {
+    return APP.categorias.filter(c => c !== excluir)
+      .map(c => `<option value="${escapeHtml(c)}" ${c === selecionada ? 'selected' : ''}>${icone(c)} ${escapeHtml(c)}</option>`).join('');
   }
 
   function renderCatalogo() {
-    const filtro = (document.getElementById('filtro-catalogo').value || '').toLowerCase().trim();
+    const termos = termosBusca(document.getElementById('filtro-catalogo').value);
+    const buscando = termos.length > 0;
     const container = document.getElementById('catalogo-lista');
     const abertas = {};
     container.querySelectorAll('details[open]').forEach(d => { abertas[d.dataset.categoria] = true; });
 
-    container.innerHTML = APP.categorias.map(cat => {
-      const itens = (APP.catalogo[cat] || []).filter(p => !filtro || String(p.nome).toLowerCase().includes(filtro));
+    const html = ordemCategorias(Object.keys(APP.catalogo)).map(cat => {
+      const itens = (APP.catalogo[cat] || []).filter(p => casaBusca(p, termos));
       if (!itens.length) return '';
-      const ativos = itens.filter(p => p.ativo).length;
       return `
-        <details class="bg-white rounded-2xl shadow-sm border border-sand-100 overflow-hidden" data-categoria="${escapeHtml(cat)}" ${filtro || abertas[cat] ? 'open' : ''}>
-          <summary class="flex items-center justify-between px-3.5 py-3 cursor-pointer active:bg-sand-50">
-            <span class="font-extrabold text-sm text-sand-800">${ICONE_CATEGORIA[cat] || '📦'} ${escapeHtml(cat)}</span>
+        <details class="bg-white rounded-2xl shadow-sm border border-sage-200 overflow-hidden" data-categoria="${escapeHtml(cat)}" ${buscando || abertas[cat] ? 'open' : ''}>
+          <summary class="flex items-center justify-between px-3.5 py-3 cursor-pointer bg-sage-100 active:bg-sage-200">
+            <span class="font-extrabold text-[13px] text-sage-800 uppercase tracking-wide">${icone(cat)} ${escapeHtml(cat)}</span>
             <span class="flex items-center gap-2">
-              <span class="cat-badge text-[11px] text-sand-400 font-semibold">${ativos}/${itens.length}</span>
-              <svg class="chev w-3.5 h-3.5 text-sand-400 transition-transform" viewBox="0 0 12 8" fill="none"><path d="M1 1l5 5 5-5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+              <span class="text-[11px] font-bold text-sage-700 bg-white/70 rounded-full px-2 py-0.5">${itens.length}</span>
+              <svg class="chev w-3.5 h-3.5 text-sage-700 transition-transform" viewBox="0 0 12 8" fill="none"><path d="M1 1l5 5 5-5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
             </span>
           </summary>
-          <div class="border-t border-sand-100 divide-y divide-sand-50">
+          <div class="divide-y divide-sand-100">
             ${itens.map(linhaCatalogoItem).join('')}
           </div>
         </details>`;
     }).join('');
+
+    container.innerHTML = html || `
+      <div class="text-center py-6">
+        <p class="text-sm text-sand-500 mb-3">${buscando ? 'Nenhum produto encontrado.' : 'Nenhum produto cadastrado.'}</p>
+        <button onclick="DespenseiApp.cadastrarPelaBuscaCatalogo()" class="bg-sage-600 text-white font-bold rounded-xl px-4 py-2.5 text-sm active:scale-95">+ Cadastrar novo produto</button>
+      </div>`;
   }
 
   function linhaCatalogoItem(p) {
+    const info = [];
+    if (p.estoqueAtual > 0) info.push('🏠 em casa: ' + p.estoqueAtual);
+    if (p.emListaManual) info.push('📋 na lista');
+    if (p.codigoBarras) info.push('▮▯▮ ' + p.codigoBarras);
     return `
       <div class="flex items-center justify-between px-3.5 py-2.5 gap-2">
-        <span class="text-sm text-sand-800 ${p.ativo ? 'font-semibold' : ''} truncate pr-1">${escapeHtml(p.nome)}</span>
-        <div class="flex items-center gap-3 shrink-0">
-          <button onclick="DespenseiApp.abrirModalEditar('${p.id}')" class="text-sand-400 active:text-sage-600 p-1 -m-1" aria-label="Editar produto">✏️</button>
-          <label class="relative inline-flex items-center cursor-pointer">
-            <input type="checkbox" class="sr-only peer" ${p.ativo ? 'checked' : ''} onchange="DespenseiApp.toggleProdutoAtivo('${p.id}', this.checked)">
-            <div class="w-10 h-[22px] bg-sand-200 rounded-full peer-checked:bg-sage-600 transition-colors relative
-              after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:w-[18px] after:h-[18px] after:rounded-full after:shadow after:transition-transform peer-checked:after:translate-x-[18px]"></div>
-          </label>
+        <div class="min-w-0 flex-1">
+          <p class="text-sm text-sand-900 ${p.estoqueAtual > 0 ? 'font-bold' : ''}">${escapeHtml(p.nome)}</p>
+          ${info.length ? `<p class="text-[11px] text-sand-500 truncate">${escapeHtml(info.join(' · '))}</p>` : ''}
+        </div>
+        <div class="flex items-center gap-1.5 shrink-0">
+          <button onclick="DespenseiApp.alternarLista('${p.id}')" class="w-9 h-9 rounded-full ${p.emListaManual ? 'bg-sage-600 text-white' : 'bg-sand-50'} active:scale-95 flex items-center justify-center" title="${p.emListaManual ? 'Tirar da lista de compras' : 'Adicionar à lista de compras'}">📋</button>
+          <button onclick="DespenseiApp.adicionarNaDespensa('${p.id}')" class="w-9 h-9 rounded-full bg-sand-50 active:scale-95 flex items-center justify-center" title="Já tenho em casa (adicionar à despensa)">🏠</button>
+          <button onclick="DespenseiApp.abrirModalEditar('${p.id}')" class="w-9 h-9 rounded-full bg-sand-50 active:scale-95 flex items-center justify-center" title="Editar ou excluir">✏️</button>
         </div>
       </div>`;
   }
 
-  function toggleProdutoAtivo(idProduto, ativo) {
-    const p = produto(idProduto);
-    if (!p) return;
-    p.ativo = !!ativo;
-    geracaoLocal++;
-    recalcular();
-    salvarCache();
-    // Não redesenha o catálogo inteiro (o usuário está no meio dele): só o contador da categoria.
-    renderDespensa();
-    renderListaCompras();
-    renderSelectProdutos();
-    atualizarBadges();
-    const cat = p.categoria || 'Outros';
-    const details = document.querySelector(`details[data-categoria="${CSS.escape(cat)}"]`);
-    const badge = details && details.querySelector('.cat-badge');
-    if (badge) {
-      const itens = APP.catalogo[cat] || [];
-      badge.textContent = `${itens.filter(x => x.ativo).length}/${itens.length}`;
-    }
-    DespenseiApi.enfileirar('alternar_produto_ativo', { p_produto_id: Number(p.id), p_ativo: !!ativo }, p.nome + (ativo ? ' ativado' : ' desativado'));
+  function cadastrarPelaBuscaCatalogo() {
+    const busca = document.getElementById('filtro-catalogo').value.trim();
+    abrirModalNovoProduto(busca, '', function () {
+      document.getElementById('filtro-catalogo').value = '';
+      renderCatalogo();
+    });
   }
+
+  // ----- Editar / excluir produto -----
 
   function abrirModalEditar(idProduto) {
     const p = produto(idProduto);
@@ -1009,11 +1243,7 @@ const DespenseiApp = (function () {
     idProdutoEmEdicao = idProduto;
     document.getElementById('editar-produto-nome').value = p.nome;
     document.getElementById('editar-produto-codigo-barras').value = p.codigoBarras || '';
-
-    const sel = document.getElementById('editar-produto-categoria');
-    sel.innerHTML = APP.categorias.map(c => `<option value="${escapeHtml(c)}">${ICONE_CATEGORIA[c] || ''} ${escapeHtml(c)}</option>`).join('');
-    sel.value = p.categoria;
-
+    document.getElementById('editar-produto-categoria').innerHTML = opcoesCategorias(p.categoria);
     document.getElementById('modal-editar').classList.remove('hidden');
   }
 
@@ -1026,18 +1256,21 @@ const DespenseiApp = (function () {
     if (!idProdutoEmEdicao) return;
     const nome = document.getElementById('editar-produto-nome').value.trim();
     const categoria = document.getElementById('editar-produto-categoria').value;
-    const codigoBarras = document.getElementById('editar-produto-codigo-barras').value.trim();
+    const codigoBarras = document.getElementById('editar-produto-codigo-barras').value.replace(/\s+/g, '');
     if (!nome) { showToast('Digite o nome do produto.', 'erro'); return; }
 
     showLoader();
     try {
       const atualizado = await chamarOnline('editar_produto', { p_produto_id: Number(idProdutoEmEdicao), p_nome: nome, p_categoria: categoria });
       const p = produto(idProdutoEmEdicao);
-      if (codigoBarras && codigoBarras !== (p && p.codigoBarras)) {
+      atualizado.codigoBarras = p ? (p.codigoBarras || '') : '';
+      if (codigoBarras !== atualizado.codigoBarras) {
         await DespenseiApi.rpc('vincular_codigo_barras', { p_produto_id: Number(idProdutoEmEdicao), p_codigo_barras: codigoBarras });
         atualizado.codigoBarras = codigoBarras;
       }
       if (p) Object.assign(p, { nome: atualizado.nome, categoria: atualizado.categoria, codigoBarras: atualizado.codigoBarras });
+      APP.carrinho.forEach(function (i) { if (String(i.idProduto) === String(idProdutoEmEdicao)) i.nome = atualizado.nome; });
+      salvarCarrinho();
       mudouLocal();
       fecharModalEditar();
       showToast('Produto atualizado!');
@@ -1048,24 +1281,87 @@ const DespenseiApp = (function () {
     }
   }
 
-  async function adicionarProdutoPersonalizado() {
-    const nomeInput = document.getElementById('novo-produto-nome');
-    const nome = nomeInput.value.trim();
-    const categoria = document.getElementById('novo-produto-categoria').value;
-    if (!nome) { showToast('Digite o nome do produto.', 'erro'); return; }
+  async function excluirProdutoEmEdicao() {
+    const p = produto(idProdutoEmEdicao);
+    if (!p) return;
+    if (!confirm(`Excluir "${p.nome}" do catálogo?\n\nEle sai da despensa, da lista e do carrinho. O histórico de compras já feitas continua guardado.`)) return;
 
     showLoader();
     try {
-      const novo = await chamarOnline('adicionar_produto_personalizado', { p_nome: nome, p_categoria: categoria });
-      APP.produtos.push(novo);
+      await chamarOnline('excluir_produto', { p_produto_id: Number(p.id) });
+      APP.produtos = APP.produtos.filter(x => x !== p);
+      APP.carrinho = APP.carrinho.filter(i => String(i.idProduto) !== String(p.id));
+      if (String(idSelecionadoCarrinho) === String(p.id)) idSelecionadoCarrinho = null;
+      salvarCarrinho();
+      fecharModalEditar();
       mudouLocal();
-      nomeInput.value = '';
-      showToast('Produto adicionado ao catálogo!');
+      showToast(`"${p.nome}" excluído.`);
+    } catch (err) {
+      tratarErro(err, 'Erro ao excluir: ');
+    } finally {
+      hideLoader();
+    }
+  }
+
+  // ----- Novo produto (Catálogo, busca sem resultado ou código lido) -----
+
+  function abrirModalNovoProduto(nome, codigo, depois) {
+    aoCriarProduto = depois || null;
+    document.getElementById('novo-produto-nome').value = nome || '';
+    document.getElementById('novo-produto-codigo').value = codigo || '';
+    document.getElementById('novo-produto-categoria').innerHTML = opcoesCategorias(null);
+    document.getElementById('modal-novo-produto').classList.remove('hidden');
+    if (!nome) setTimeout(function () { document.getElementById('novo-produto-nome').focus(); }, 50);
+  }
+
+  function fecharModalNovoProduto() {
+    aoCriarProduto = null;
+    document.getElementById('modal-novo-produto').classList.add('hidden');
+  }
+
+  async function salvarNovoProduto() {
+    const nome = document.getElementById('novo-produto-nome').value.trim();
+    const categoria = document.getElementById('novo-produto-categoria').value;
+    const codigo = document.getElementById('novo-produto-codigo').value.replace(/\s+/g, '');
+    if (!nome) { showToast('Digite o nome do produto.', 'erro'); return; }
+    if (!categoria) { showToast('Escolha a categoria.', 'erro'); return; }
+
+    const parecido = APP.produtos.find(x => !x.avulso && normalizar(x.nome) === normalizar(nome));
+    if (parecido && !confirm(`Já existe um produto chamado "${parecido.nome}". Cadastrar outro com o mesmo nome?`)) return;
+
+    showLoader();
+    try {
+      const novo = await chamarOnline('adicionar_produto_personalizado', { p_nome: nome, p_categoria: categoria, p_codigo_barras: codigo || null });
+      APP.produtos.push(novo);
+      const depois = aoCriarProduto;
+      fecharModalNovoProduto();
+      mudouLocal();
+      showToast(`"${novo.nome}" cadastrado!`);
+      if (depois) depois(novo.id);
     } catch (err) {
       tratarErro(err);
     } finally {
       hideLoader();
     }
+  }
+
+  // ----- Categorias -----
+
+  function renderCategoriasLista() {
+    const container = document.getElementById('categorias-lista');
+    if (!APP.categorias.length) {
+      container.innerHTML = `<p class="text-xs text-sand-400 py-1">Nenhuma categoria cadastrada.</p>`;
+      return;
+    }
+    container.innerHTML = APP.categorias.map(c => {
+      const qtd = (APP.catalogo[c] || []).length;
+      return `
+        <div class="flex items-center gap-2 bg-sand-50 rounded-lg pl-3 pr-1.5 py-1.5">
+          <span class="flex-1 min-w-0 text-sm text-sand-800 truncate">${icone(c)} ${escapeHtml(c)} <span class="text-[11px] text-sand-400">(${qtd})</span></span>
+          <button data-cat="${escapeHtml(c)}" onclick="DespenseiApp.renomearCategoria(this.dataset.cat)" class="shrink-0 w-8 h-8 rounded-full bg-white active:scale-95 flex items-center justify-center" title="Renomear">✏️</button>
+          <button data-cat="${escapeHtml(c)}" onclick="DespenseiApp.excluirCategoria(this.dataset.cat)" class="shrink-0 w-8 h-8 rounded-full bg-white active:scale-95 flex items-center justify-center" title="Excluir">🗑️</button>
+        </div>`;
+    }).join('');
   }
 
   async function adicionarCategoria() {
@@ -1086,6 +1382,70 @@ const DespenseiApp = (function () {
       hideLoader();
     }
   }
+
+  async function renomearCategoria(nome) {
+    const valor = window.prompt(`Novo nome para a categoria "${nome}":`, nome);
+    if (valor === null) return;
+    const novo = valor.trim();
+    if (!novo || novo === nome) return;
+
+    showLoader();
+    try {
+      const r = await chamarOnline('renomear_categoria', { p_nome_atual: nome, p_nome_novo: novo });
+      APP.categorias = APP.categorias.map(c => c === nome ? r.nome : c);
+      APP.produtos.forEach(p => { if (!p.avulso && p.categoria === nome) p.categoria = r.nome; });
+      mudouLocal();
+      showToast(`Categoria renomeada para "${r.nome}".`);
+    } catch (err) {
+      tratarErro(err);
+    } finally {
+      hideLoader();
+    }
+  }
+
+  function excluirCategoria(nome) {
+    if (APP.categorias.length <= 1) { showToast('É preciso ter pelo menos uma categoria.', 'erro'); return; }
+    const qtd = APP.produtos.filter(p => !p.avulso && p.categoria === nome).length;
+    if (!qtd) {
+      if (confirm(`Excluir a categoria "${nome}"?`)) executarExclusaoCategoria(nome, null);
+      return;
+    }
+    categoriaParaExcluir = nome;
+    document.getElementById('excluir-categoria-texto').textContent =
+      `A categoria "${nome}" tem ${qtd} produto${qtd > 1 ? 's' : ''}. Para excluí-la, escolha para qual categoria ${qtd > 1 ? 'eles vão' : 'ele vai'}:`;
+    document.getElementById('excluir-categoria-destino').innerHTML = opcoesCategorias(null, nome);
+    document.getElementById('modal-excluir-categoria').classList.remove('hidden');
+  }
+
+  function fecharModalExcluirCategoria() {
+    categoriaParaExcluir = null;
+    document.getElementById('modal-excluir-categoria').classList.add('hidden');
+  }
+
+  function confirmarExcluirCategoria() {
+    const destino = document.getElementById('excluir-categoria-destino').value;
+    if (!categoriaParaExcluir || !destino) return;
+    const nome = categoriaParaExcluir;
+    fecharModalExcluirCategoria();
+    executarExclusaoCategoria(nome, destino);
+  }
+
+  async function executarExclusaoCategoria(nome, destino) {
+    showLoader();
+    try {
+      await chamarOnline('excluir_categoria', { p_nome: nome, p_mover_para: destino });
+      APP.categorias = APP.categorias.filter(c => c !== nome);
+      if (destino) APP.produtos.forEach(p => { if (!p.avulso && p.categoria === nome) p.categoria = destino; });
+      mudouLocal();
+      showToast(`Categoria "${nome}" excluída.` + (destino ? ` Produtos movidos para "${destino}".` : ''));
+    } catch (err) {
+      tratarErro(err);
+    } finally {
+      hideLoader();
+    }
+  }
+
+  // ----- Estabelecimentos -----
 
   function renderEstabelecimentosLista() {
     const container = document.getElementById('estabelecimentos-lista');
@@ -1126,11 +1486,17 @@ const DespenseiApp = (function () {
     salvarTelefone,
     switchTab,
     mudarEstoque,
+    adicionarNaDespensa,
     adicionarComoDesejo,
+    alternarLista,
     adicionarItemAvulso,
-    adicionarRapidoAoCarrinho,
+    levarAoCarrinho,
     removerItemLista,
-    aoSelecionarProduto,
+    buscarNoSeletor,
+    alternarCategoriaSeletor,
+    escolherNoSeletor,
+    criarPeloSeletor,
+    trocarProdutoCarrinho,
     atualizarIndicadorPreco,
     ajustarQtdForm,
     adicionarItemCarrinho,
@@ -1140,14 +1506,23 @@ const DespenseiApp = (function () {
     finalizarCompra,
     abrirScanner,
     vincularCodigoPendente,
-    abrirScannerParaEdicao,
+    descartarCodigoPendente,
+    novoProdutoComCodigo,
+    abrirScannerParaCampo,
     renderCatalogo,
-    toggleProdutoAtivo,
+    cadastrarPelaBuscaCatalogo,
     abrirModalEditar,
     fecharModalEditar,
     salvarEdicaoProduto,
-    adicionarProdutoPersonalizado,
-    adicionarCategoria
+    excluirProdutoEmEdicao,
+    abrirModalNovoProduto,
+    fecharModalNovoProduto,
+    salvarNovoProduto,
+    adicionarCategoria,
+    renomearCategoria,
+    excluirCategoria,
+    fecharModalExcluirCategoria,
+    confirmarExcluirCategoria
   };
 })();
 

@@ -158,6 +158,23 @@
             Minha Despensa
           </h2>
         </div>
+        <p class="text-xs text-sand-600 mb-3">Só o que você tem em casa. Quando um item acaba, ele sai daqui.</p>
+
+        <details class="bg-white rounded-2xl mb-4 shadow-sm border border-sand-100 overflow-hidden">
+          <summary class="flex items-center justify-between px-3.5 py-3 cursor-pointer active:bg-sand-50">
+            <span class="font-extrabold text-sm text-sage-800">+ Já tenho em casa</span>
+            <svg class="chev w-3.5 h-3.5 text-sand-400 transition-transform" viewBox="0 0 12 8" fill="none"><path d="M1 1l5 5 5-5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+          </summary>
+          <div class="px-3 pb-3">
+            <p class="text-[11px] text-sand-500 mb-2">Procure o produto do catálogo e informe quantas unidades você tem.</p>
+            <div id="seletor-despensa">
+              <input type="search" autocomplete="off" oninput="DespenseiApp.buscarNoSeletor('despensa', this.value)" placeholder="🔍 Digite o nome do produto…"
+                class="seletor-busca w-full border border-sand-200 rounded-xl px-3 py-2.5 text-sm bg-sand-50 focus:outline-none focus:ring-2 focus:ring-sage-400">
+              <div class="seletor-lista mt-2 space-y-2"></div>
+            </div>
+          </div>
+        </details>
+
         <div id="despensa-lista" class="space-y-5"></div>
       </section>
 
@@ -176,7 +193,16 @@
             Lista de Compras
           </h2>
         </div>
-        <p class="text-xs text-sand-600 mb-3">Gerada automaticamente com itens no fim do estoque — mais o que você adicionar na mão.</p>
+        <p class="text-xs text-sand-600 mb-3">Só o que você decidir comprar: pela busca abaixo, pelo botão 📋 na Despensa ou no Catálogo, ou como item avulso.</p>
+
+        <div class="bg-white rounded-2xl p-3 mb-3 shadow-sm border border-sand-100">
+          <p class="text-xs font-bold text-sand-700 mb-2">Adicionar produto do catálogo</p>
+          <div id="seletor-lista">
+            <input type="search" autocomplete="off" oninput="DespenseiApp.buscarNoSeletor('lista', this.value)" placeholder="🔍 Digite o nome do produto…"
+              class="seletor-busca w-full border border-sand-200 rounded-xl px-3 py-2.5 text-sm bg-sand-50 focus:outline-none focus:ring-2 focus:ring-sage-400">
+            <div class="seletor-lista mt-2 space-y-2"></div>
+          </div>
+        </div>
 
         <div class="bg-white rounded-2xl p-3 mb-4 shadow-sm border border-sand-100 flex gap-2">
           <input id="novo-item-avulso" type="text" placeholder="Item avulso (não vai pro catálogo)…"
@@ -211,18 +237,30 @@
           </div>
         </div>
 
-        <div class="bg-white rounded-2xl p-3.5 mb-4 shadow-sm border border-sand-100 space-y-3">
+        <div id="carrinho-form" class="bg-white rounded-2xl p-3.5 mb-4 shadow-sm border border-sand-100 space-y-3 scroll-mt-20">
           <div class="flex items-center justify-between">
             <label class="block text-xs font-bold text-sand-700">Produto</label>
-            <button onclick="DespenseiApp.abrirScanner()" class="text-xs font-bold text-sage-700 bg-sage-50 rounded-lg px-2.5 py-1.5 active:scale-95 transition">📷 Escanear código</button>
+            <button onclick="DespenseiApp.abrirScanner()" class="text-xs font-bold text-sage-700 bg-sage-50 rounded-lg px-2.5 py-1.5 active:scale-95 transition">📷 Código de barras</button>
           </div>
-          <select id="select-produto" onchange="DespenseiApp.aoSelecionarProduto()" class="w-full border border-sand-200 rounded-xl px-3 py-2.5 text-sm bg-sand-50 focus:outline-none focus:ring-2 focus:ring-sage-400">
-            <option value="">Selecione um item…</option>
-          </select>
-          <button id="btn-vincular-codigo" onclick="DespenseiApp.vincularCodigoPendente()" class="hidden w-full bg-terracotta-50 text-terracotta-700 font-bold rounded-xl py-2 text-xs active:scale-[0.98] transition">
-            🔗 Vincular código escaneado a este produto
-          </button>
 
+          <div id="carrinho-codigo-pendente" class="hidden bg-amber-50 border border-amber-200 rounded-xl p-3"></div>
+
+          <div id="carrinho-escolhido" class="hidden flex items-center gap-2 bg-sage-50 border border-sage-200 rounded-xl px-3 py-2.5">
+            <div class="flex-1 min-w-0">
+              <p id="carrinho-escolhido-nome" class="font-extrabold text-sm text-sand-900"></p>
+              <p id="carrinho-escolhido-cat" class="text-[11px] text-sage-700"></p>
+            </div>
+            <button onclick="DespenseiApp.trocarProdutoCarrinho()" class="shrink-0 text-xs font-bold text-sage-700 bg-white border border-sage-200 rounded-lg px-2.5 py-1.5 active:scale-95">Trocar</button>
+          </div>
+
+          <div id="seletor-carrinho">
+            <input type="search" autocomplete="off" oninput="DespenseiApp.buscarNoSeletor('carrinho', this.value)" placeholder="🔍 Digite o nome do produto…"
+              class="seletor-busca w-full border border-sand-200 rounded-xl px-3 py-2.5 text-sm bg-sand-50 focus:outline-none focus:ring-2 focus:ring-sage-400">
+            <p class="text-[11px] text-sand-500 mt-1.5">Ou toque numa categoria para abrir:</p>
+            <div class="seletor-lista mt-2 space-y-2"></div>
+          </div>
+
+          <div id="carrinho-campos" class="hidden space-y-3">
           <div class="flex gap-3">
             <div class="flex-1">
               <label class="block text-xs font-bold text-sand-700 mb-1">Preço unitário</label>
@@ -252,6 +290,7 @@
           <button onclick="DespenseiApp.adicionarItemCarrinho()" class="w-full bg-sage-600 hover:bg-sage-700 text-white font-bold rounded-xl py-3 text-sm active:scale-[0.98] transition">
             + Adicionar ao Carrinho
           </button>
+          </div>
         </div>
 
         <div id="carrinho-itens" class="space-y-2 mb-4"></div>
@@ -273,13 +312,38 @@
           Meu Catálogo &amp; Configurações
         </h2>
 
-        <!-- Conta -->
-        <div class="bg-white rounded-2xl p-3.5 mb-5 shadow-sm border border-sand-100 flex items-center justify-between gap-3">
-          <div class="min-w-0">
-            <h3 class="text-sm font-extrabold text-sage-800">👤 Conta</h3>
-            <p class="text-xs text-sand-600 truncate" id="config-email-logado">—</p>
+        <!-- Produtos cadastrados (catálogo) -->
+        <div class="mb-5">
+          <div class="flex items-center justify-between mb-2 gap-2">
+            <h3 class="text-sm font-extrabold text-sage-800">Produtos cadastrados</h3>
+            <button onclick="DespenseiApp.abrirModalNovoProduto('', '', null)" class="shrink-0 bg-sage-600 text-white font-bold rounded-xl px-3 py-2 text-xs active:scale-95 transition">+ Novo produto</button>
           </div>
-          <button onclick="DespenseiAuth.logout()" class="shrink-0 text-xs text-terracotta-500 font-bold border border-terracotta-200 rounded-xl px-3.5 py-2.5 active:scale-95 transition">Sair do app</button>
+          <p class="text-[11px] text-sand-500 mb-2">📋 coloca/tira da lista de compras · 🏠 informa que você já tem em casa · ✏️ edita ou exclui.</p>
+          <input id="filtro-catalogo" oninput="DespenseiApp.renderCatalogo()" type="search" autocomplete="off" placeholder="🔍 Digite o nome do produto…"
+            class="w-full border border-sand-200 rounded-xl px-3 py-2.5 text-sm bg-white mb-3 focus:outline-none focus:ring-2 focus:ring-sage-400">
+          <div id="catalogo-lista" class="space-y-3"></div>
+        </div>
+
+        <!-- Categorias -->
+        <div class="bg-white rounded-2xl p-3.5 mb-5 shadow-sm border border-sand-100">
+          <h3 class="text-sm font-extrabold text-sage-800 mb-2">Categorias</h3>
+          <div id="categorias-lista" class="space-y-1.5 mb-3"></div>
+          <div class="flex gap-2">
+            <input id="nova-categoria-nome" type="text" placeholder="Nova categoria. Ex: Congelados"
+              class="flex-1 min-w-0 border border-sand-200 rounded-xl px-3 py-2.5 text-sm bg-sand-50 focus:outline-none focus:ring-2 focus:ring-sage-400">
+            <button onclick="DespenseiApp.adicionarCategoria()" class="shrink-0 bg-sage-100 text-sage-700 font-bold rounded-xl px-3.5 py-2.5 text-sm active:scale-95 transition">Adicionar</button>
+          </div>
+        </div>
+
+        <!-- Estabelecimentos -->
+        <div class="bg-white rounded-2xl p-3.5 mb-5 shadow-sm border border-sand-100">
+          <h3 class="text-sm font-extrabold text-sage-800 mb-2">Estabelecimentos</h3>
+          <div id="estabelecimentos-lista" class="space-y-1.5 mb-3"></div>
+          <div class="flex gap-2">
+            <input id="novo-estabelecimento-nome" type="text" placeholder="Novo estabelecimento"
+              class="flex-1 min-w-0 border border-sand-200 rounded-xl px-3 py-2.5 text-sm bg-sand-50 focus:outline-none focus:ring-2 focus:ring-sage-400">
+            <button onclick="DespenseiApp.adicionarEstabelecimentoForm()" class="shrink-0 bg-sage-100 text-sage-700 font-bold rounded-xl px-3.5 py-2.5 text-sm active:scale-95 transition">Adicionar</button>
+          </div>
         </div>
 
         <!-- Minha família -->
@@ -311,48 +375,13 @@
           </div>
         </div>
 
-        <!-- Adicionar item personalizado -->
-        <div class="bg-white rounded-2xl p-3.5 mb-5 shadow-sm border border-sand-100">
-          <h3 class="text-sm font-extrabold text-sage-800 mb-2">Adicionar item personalizado</h3>
-          <div class="space-y-2">
-            <input id="novo-produto-nome" type="text" placeholder="Nome do produto"
-              class="w-full border border-sand-200 rounded-xl px-3 py-2.5 text-sm bg-sand-50 focus:outline-none focus:ring-2 focus:ring-sage-400">
-            <select id="novo-produto-categoria" class="w-full border border-sand-200 rounded-xl px-3 py-2.5 text-sm bg-sand-50 focus:outline-none focus:ring-2 focus:ring-sage-400"></select>
-            <button onclick="DespenseiApp.adicionarProdutoPersonalizado()" class="w-full bg-sage-600 hover:bg-sage-700 text-white font-bold rounded-xl py-2.5 text-sm active:scale-[0.98] transition">
-              Adicionar ao catálogo
-            </button>
+        <!-- Conta -->
+        <div class="bg-white rounded-2xl p-3.5 mb-5 shadow-sm border border-sand-100 flex items-center justify-between gap-3">
+          <div class="min-w-0">
+            <h3 class="text-sm font-extrabold text-sage-800">👤 Conta</h3>
+            <p class="text-xs text-sand-600 truncate" id="config-email-logado">—</p>
           </div>
-        </div>
-
-        <!-- Nova categoria -->
-        <div class="bg-white rounded-2xl p-3.5 mb-5 shadow-sm border border-sand-100">
-          <h3 class="text-sm font-extrabold text-sage-800 mb-2">Nova categoria</h3>
-          <div class="flex gap-2">
-            <input id="nova-categoria-nome" type="text" placeholder="Ex: Congelados"
-              class="flex-1 min-w-0 border border-sand-200 rounded-xl px-3 py-2.5 text-sm bg-sand-50 focus:outline-none focus:ring-2 focus:ring-sage-400">
-            <button onclick="DespenseiApp.adicionarCategoria()" class="shrink-0 bg-sage-100 text-sage-700 font-bold rounded-xl px-3.5 py-2.5 text-sm active:scale-95 transition">Adicionar</button>
-          </div>
-        </div>
-
-        <!-- Ativar itens do catálogo -->
-        <div class="mb-5">
-          <div class="flex items-center justify-between mb-2">
-            <h3 class="text-sm font-extrabold text-sage-800">Personalize sua despensa</h3>
-          </div>
-          <input id="filtro-catalogo" oninput="DespenseiApp.renderCatalogo()" type="text" placeholder="🔍 Buscar produto…"
-            class="w-full border border-sand-200 rounded-xl px-3 py-2.5 text-sm bg-white mb-3 focus:outline-none focus:ring-2 focus:ring-sage-400">
-          <div id="catalogo-lista" class="space-y-3"></div>
-        </div>
-
-        <!-- Estabelecimentos -->
-        <div class="bg-white rounded-2xl p-3.5 mb-5 shadow-sm border border-sand-100">
-          <h3 class="text-sm font-extrabold text-sage-800 mb-2">Estabelecimentos</h3>
-          <div id="estabelecimentos-lista" class="space-y-1.5 mb-3"></div>
-          <div class="flex gap-2">
-            <input id="novo-estabelecimento-nome" type="text" placeholder="Novo estabelecimento"
-              class="flex-1 min-w-0 border border-sand-200 rounded-xl px-3 py-2.5 text-sm bg-sand-50 focus:outline-none focus:ring-2 focus:ring-sage-400">
-            <button onclick="DespenseiApp.adicionarEstabelecimentoForm()" class="shrink-0 bg-sage-100 text-sage-700 font-bold rounded-xl px-3.5 py-2.5 text-sm active:scale-95 transition">Adicionar</button>
-          </div>
+          <button onclick="DespenseiAuth.logout()" class="shrink-0 text-xs text-terracotta-500 font-bold border border-terracotta-200 rounded-xl px-3.5 py-2.5 active:scale-95 transition">Sair do app</button>
         </div>
 
       </section>
@@ -425,35 +454,90 @@
       <div class="space-y-2.5">
         <div>
           <label class="block text-xs font-bold text-sand-700 mb-1">Nome</label>
-          <input id="editar-produto-nome" type="text"
-            class="w-full border border-sand-200 rounded-xl px-3 py-2.5 text-sm bg-sand-50 focus:outline-none focus:ring-2 focus:ring-sage-400">
+          <input id="editar-produto-nome" type="text" class="w-full border border-sand-200 rounded-xl px-3 py-2.5 text-sm bg-sand-50 focus:outline-none focus:ring-2 focus:ring-sage-400">
         </div>
         <div>
           <label class="block text-xs font-bold text-sand-700 mb-1">Categoria</label>
           <select id="editar-produto-categoria" class="w-full border border-sand-200 rounded-xl px-3 py-2.5 text-sm bg-sand-50 focus:outline-none focus:ring-2 focus:ring-sage-400"></select>
         </div>
         <div class="flex items-center justify-between pt-1">
-          <label class="block text-xs font-bold text-sand-700">Código de barras</label>
-          <button onclick="DespenseiApp.abrirScannerParaEdicao()" class="text-xs font-bold text-sage-700 bg-sage-50 rounded-lg px-2.5 py-1.5 active:scale-95 transition">📷 Escanear</button>
+          <label class="block text-xs font-bold text-sand-700">Código de barras <span class="font-normal text-sand-400">(digite ou leia)</span></label>
+          <button onclick="DespenseiApp.abrirScannerParaCampo('editar-produto-codigo-barras')" class="text-xs font-bold text-sage-700 bg-sage-50 rounded-lg px-2.5 py-1.5 active:scale-95 transition">📷 Ler</button>
         </div>
-        <input id="editar-produto-codigo-barras" type="text" placeholder="Sem código vinculado"
-          class="w-full border border-sand-200 rounded-xl px-3 py-2.5 text-sm bg-sand-50 focus:outline-none focus:ring-2 focus:ring-sage-400">
+        <input id="editar-produto-codigo-barras" type="text" inputmode="numeric" autocomplete="off" placeholder="Sem código vinculado" class="w-full border border-sand-200 rounded-xl px-3 py-2.5 text-sm bg-sand-50 focus:outline-none focus:ring-2 focus:ring-sage-400">
       </div>
       <div class="flex gap-2 mt-4">
         <button onclick="DespenseiApp.fecharModalEditar()" class="flex-1 bg-sand-100 text-sand-700 font-bold rounded-xl py-2.5 text-sm active:scale-[0.98] transition">Cancelar</button>
         <button onclick="DespenseiApp.salvarEdicaoProduto()" class="flex-1 bg-sage-600 hover:bg-sage-700 text-white font-bold rounded-xl py-2.5 text-sm active:scale-[0.98] transition">Salvar</button>
       </div>
+      <button onclick="DespenseiApp.excluirProdutoEmEdicao()" class="w-full mt-3 text-terracotta-600 font-bold text-xs border border-terracotta-200 rounded-xl py-2.5 active:bg-terracotta-50">🗑️ Excluir este produto</button>
     </div>
   </div>
 
-  <!-- ===================== MODAL SCANNER DE CÓDIGO DE BARRAS ===================== -->
+  <!-- ===================== MODAL NOVO PRODUTO ===================== -->
+  <div id="modal-novo-produto" class="hidden fixed inset-0 z-50 bg-sand-900/40 backdrop-blur-[1px] flex items-end sm:items-center justify-center px-4 pb-4 sm:pb-0">
+    <div class="bg-white rounded-2xl w-full max-w-sm p-4 shadow-xl">
+      <h3 class="text-sm font-extrabold text-sage-800 mb-3">Novo produto</h3>
+      <div class="space-y-2.5">
+        <div>
+          <label class="block text-xs font-bold text-sand-700 mb-1">Nome</label>
+          <input id="novo-produto-nome" type="text" placeholder="Ex: Lasanha Pif Paf 4 Queijos 600g" class="w-full border border-sand-200 rounded-xl px-3 py-2.5 text-sm bg-sand-50 focus:outline-none focus:ring-2 focus:ring-sage-400">
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-sand-700 mb-1">Categoria</label>
+          <select id="novo-produto-categoria" class="w-full border border-sand-200 rounded-xl px-3 py-2.5 text-sm bg-sand-50 focus:outline-none focus:ring-2 focus:ring-sage-400"></select>
+        </div>
+        <div class="flex items-center justify-between pt-1">
+          <label class="block text-xs font-bold text-sand-700">Código de barras <span class="font-normal text-sand-400">(opcional)</span></label>
+          <button onclick="DespenseiApp.abrirScannerParaCampo('novo-produto-codigo')" class="text-xs font-bold text-sage-700 bg-sage-50 rounded-lg px-2.5 py-1.5 active:scale-95 transition">📷 Ler</button>
+        </div>
+        <input id="novo-produto-codigo" type="text" inputmode="numeric" autocomplete="off" placeholder="Digite ou leia o código" class="w-full border border-sand-200 rounded-xl px-3 py-2.5 text-sm bg-sand-50 focus:outline-none focus:ring-2 focus:ring-sage-400">
+      </div>
+      <div class="flex gap-2 mt-4">
+        <button onclick="DespenseiApp.fecharModalNovoProduto()" class="flex-1 bg-sand-100 text-sand-700 font-bold rounded-xl py-2.5 text-sm active:scale-[0.98] transition">Cancelar</button>
+        <button onclick="DespenseiApp.salvarNovoProduto()" class="flex-1 bg-sage-600 hover:bg-sage-700 text-white font-bold rounded-xl py-2.5 text-sm active:scale-[0.98] transition">Cadastrar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== MODAL EXCLUIR CATEGORIA ===================== -->
+  <div id="modal-excluir-categoria" class="hidden fixed inset-0 z-50 bg-sand-900/40 backdrop-blur-[1px] flex items-end sm:items-center justify-center px-4 pb-4 sm:pb-0">
+    <div class="bg-white rounded-2xl w-full max-w-sm p-4 shadow-xl">
+      <h3 class="text-sm font-extrabold text-sage-800 mb-2">Excluir categoria</h3>
+      <p id="excluir-categoria-texto" class="text-xs text-sand-700 mb-2"></p>
+      <select id="excluir-categoria-destino" class="w-full border border-sand-200 rounded-xl px-3 py-2.5 text-sm bg-sand-50 focus:outline-none focus:ring-2 focus:ring-sage-400"></select>
+      <div class="flex gap-2 mt-4">
+        <button onclick="DespenseiApp.fecharModalExcluirCategoria()" class="flex-1 bg-sand-100 text-sand-700 font-bold rounded-xl py-2.5 text-sm active:scale-[0.98] transition">Cancelar</button>
+        <button onclick="DespenseiApp.confirmarExcluirCategoria()" class="flex-1 bg-terracotta-500 text-white font-bold rounded-xl py-2.5 text-sm active:scale-[0.98] transition">Mover e excluir</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== MODAL LEITOR DE CÓDIGO DE BARRAS ===================== -->
   <div id="modal-scanner" class="hidden fixed inset-0 z-[60] bg-black flex flex-col">
     <div class="flex items-center justify-between p-4">
-      <span class="text-white font-bold text-sm">Aponte para o código de barras</span>
-      <button onclick="DespenseiBarcode.parar()" class="text-white text-2xl leading-none px-2">✕</button>
+      <span class="text-white font-bold text-sm">Código de barras</span>
+      <div class="flex items-center gap-2">
+        <button id="scanner-lanterna" onclick="DespenseiBarcode.alternarLanterna()" class="hidden text-white text-lg leading-none px-2" aria-label="Lanterna">🔦</button>
+        <button onclick="DespenseiBarcode.parar()" class="text-white text-2xl leading-none px-2" aria-label="Fechar">✕</button>
+      </div>
     </div>
-    <video id="scanner-video" class="flex-1 w-full" style="object-fit:cover;" playsinline autoplay muted></video>
-    <p id="scanner-status" class="text-white/80 text-xs text-center p-4"></p>
+    <div class="relative flex-1 min-h-0">
+      <video id="scanner-video" class="absolute inset-0 w-full h-full" style="object-fit:cover;" playsinline autoplay muted></video>
+      <div class="absolute inset-0 flex items-center justify-center pointer-events-none">
+        <div class="w-4/5 max-w-sm h-28 border-2 border-white/90 rounded-xl" style="box-shadow:0 0 0 9999px rgba(0,0,0,0.35);"></div>
+      </div>
+    </div>
+    <p id="scanner-status" class="text-white/80 text-xs text-center px-4 pt-3"></p>
+    <div class="p-4 pb-6">
+      <p class="text-white/70 text-[11px] mb-1.5">Não leu? Digite os números que aparecem embaixo das barras:</p>
+      <div class="flex gap-2">
+        <input id="scanner-digitado" type="text" inputmode="numeric" autocomplete="off" placeholder="Ex: 7891234567895"
+          onkeydown="if(event.key==='Enter')DespenseiBarcode.usarDigitado()"
+          class="flex-1 min-w-0 rounded-xl px-3 py-2.5 text-sm bg-white text-sand-900 tracking-wider focus:outline-none focus:ring-2 focus:ring-sage-400">
+        <button onclick="DespenseiBarcode.usarDigitado()" class="shrink-0 bg-sage-600 text-white font-bold rounded-xl px-4 py-2.5 text-sm active:scale-95">Usar</button>
+      </div>
+    </div>
   </div>
 
   <!-- ===================== LOADER GLOBAL ===================== -->
