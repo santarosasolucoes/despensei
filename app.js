@@ -100,6 +100,95 @@ const DespenseiApp = (function () {
     toastTimer = setTimeout(function () { el.classList.add('hidden'); }, tipo === 'erro' ? 4000 : 2600);
   }
 
+  // ===================== JANELA DE DIÁLOGO DO APP =====================
+  // Substitui confirm()/prompt() do navegador (que mostram "site… diz").
+  // Uso: await dialogo({ titulo, mensagem, icone, tipo: 'confirmar' | 'quantidade' | 'texto',
+  //        valor, okTexto, cancelarTexto, perigo }) → null se cancelar;
+  //        true (confirmar), número (quantidade) ou texto (texto) se confirmar.
+  let dialogoAtual = null;
+
+  function dialogo(op) {
+    return new Promise(function (resolve) {
+      if (dialogoAtual) dialogoAtual.resolve(null);
+      const tipo = op.tipo || 'confirmar';
+      dialogoAtual = { resolve: resolve, tipo: tipo };
+
+      document.getElementById('dialogo-icone').textContent = op.icone || (op.perigo ? '🗑️' : '💬');
+      document.getElementById('dialogo-icone').className = 'shrink-0 w-12 h-12 rounded-2xl flex items-center justify-center text-2xl ' +
+        (op.perigo ? 'bg-terracotta-50' : 'bg-sage-100');
+      document.getElementById('dialogo-titulo').textContent = op.titulo || '';
+      const msg = document.getElementById('dialogo-mensagem');
+      msg.textContent = op.mensagem || '';
+      msg.classList.toggle('hidden', !op.mensagem);
+
+      const caixaQtd = document.getElementById('dialogo-qtd');
+      const inputQtd = document.getElementById('dialogo-qtd-input');
+      const inputTexto = document.getElementById('dialogo-texto');
+      caixaQtd.classList.toggle('hidden', tipo !== 'quantidade');
+      inputTexto.classList.toggle('hidden', tipo !== 'texto');
+      inputQtd.value = tipo === 'quantidade' ? (op.valor || 1) : '';
+      inputTexto.value = tipo === 'texto' ? (op.valor || '') : '';
+      inputTexto.placeholder = op.placeholder || '';
+      [inputQtd, inputTexto].forEach(function (i) { i.classList.remove('dialogo-erro'); });
+
+      const ok = document.getElementById('dialogo-ok');
+      ok.textContent = op.okTexto || (tipo === 'confirmar' ? 'Confirmar' : 'Salvar');
+      ok.className = 'flex-1 font-extrabold rounded-2xl py-3 text-sm text-white active:scale-[0.98] transition ' +
+        (op.perigo ? 'bg-terracotta-500 active:bg-terracotta-600' : 'bg-sage-600 active:bg-sage-700');
+      document.getElementById('dialogo-cancelar').textContent = op.cancelarTexto || 'Cancelar';
+
+      const modal = document.getElementById('modal-dialogo');
+      modal.classList.remove('hidden');
+      setTimeout(function () {
+        if (tipo === 'quantidade') { inputQtd.focus(); inputQtd.select(); }
+        else if (tipo === 'texto') { inputTexto.focus(); inputTexto.select(); }
+        else ok.focus();
+      }, 60);
+    });
+  }
+
+  function fecharDialogo(confirmou) {
+    const atual = dialogoAtual;
+    if (!atual) return;
+    let resultado = null;
+    if (confirmou) {
+      if (atual.tipo === 'quantidade') {
+        const input = document.getElementById('dialogo-qtd-input');
+        resultado = parseInt(input.value, 10);
+        if (isNaN(resultado) || resultado <= 0) { marcarErroDialogo(input); return; }
+      } else if (atual.tipo === 'texto') {
+        const input = document.getElementById('dialogo-texto');
+        resultado = input.value.trim();
+        if (!resultado) { marcarErroDialogo(input); return; }
+      } else {
+        resultado = true;
+      }
+    }
+    dialogoAtual = null;
+    document.getElementById('modal-dialogo').classList.add('hidden');
+    atual.resolve(resultado);
+  }
+
+  function marcarErroDialogo(input) {
+    input.classList.remove('dialogo-erro');
+    void input.offsetWidth; // reinicia a animação
+    input.classList.add('dialogo-erro');
+    input.focus();
+  }
+
+  function ajustarQtdDialogo(delta) {
+    const input = document.getElementById('dialogo-qtd-input');
+    input.value = Math.max(1, (parseInt(input.value, 10) || 0) + delta);
+    input.classList.remove('dialogo-erro');
+  }
+
+  document.addEventListener('keydown', function (e) {
+    if (!dialogoAtual) return;
+    const dentro = document.getElementById('modal-dialogo').contains(e.target);
+    if (e.key === 'Escape') fecharDialogo(false);
+    else if (e.key === 'Enter' && dentro && e.target.id !== 'dialogo-cancelar') { e.preventDefault(); fecharDialogo(true); }
+  });
+
   function mostrarView(nome) {
     ['login', 'familia', 'bloqueado', 'app'].forEach(function (v) {
       document.getElementById('view-' + v).classList.toggle('hidden', v !== nome);
@@ -444,7 +533,8 @@ const DespenseiApp = (function () {
   }
 
   async function removerMembro(email) {
-    if (!confirm('Remover ' + email + ' da família?')) return;
+    if (!await dialogo({ titulo: 'Remover membro?', mensagem: email + ' deixará de ter acesso à despensa da família.',
+      okTexto: 'Remover', perigo: true, icone: '👤' })) return;
     await acaoFamilia('remover_membro', { p_email: email }, 'Membro removido.');
   }
 
@@ -723,27 +813,23 @@ const DespenseiApp = (function () {
 
     // Acabou: sai da despensa. Pergunta se quer comprar de novo (não é automático).
     if (antes > 0 && depois === 0 && !p.emListaManual && !p.avulso) {
-      setTimeout(function () {
-        if (confirm(`"${p.nome}" acabou e saiu da despensa.\n\nQuer adicioná-lo à lista de compras?`)) {
-          colocarNaLista(p, qtdUltimaCompra(p));
-        }
-      }, 50);
+      dialogo({ titulo: p.nome + ' acabou', mensagem: 'Ele saiu da despensa. Quer adicioná-lo à lista de compras?',
+        icone: '📋', okTexto: 'Adicionar à lista', cancelarTexto: 'Não, obrigado' })
+        .then(function (sim) { if (sim) colocarNaLista(p, qtdUltimaCompra(p)); });
     }
   }
 
   // "Já tenho em casa": soma estoque sem precisar passar pelo carrinho.
-  function adicionarNaDespensa(idProduto) {
+  async function adicionarNaDespensa(idProduto) {
     const p = produto(idProduto);
     if (!p) return;
     const atual = Number(p.estoqueAtual) || 0;
-    const valor = window.prompt(
-      atual > 0
-        ? `"${p.nome}": você já tem ${atual} em casa. Quantas unidades a mais?`
-        : `Quantas unidades de "${p.nome}" você tem em casa?`,
-      '1');
-    if (valor === null) return;
-    const qtd = parseInt(valor, 10);
-    if (isNaN(qtd) || qtd <= 0) { showToast('Informe uma quantidade maior que zero.', 'erro'); return; }
+    const qtd = await dialogo({
+      tipo: 'quantidade', icone: '🏠', titulo: p.nome,
+      mensagem: atual > 0 ? `Você já tem ${atual} em casa. Quantas unidades a mais?` : 'Quantas unidades você tem em casa?',
+      valor: 1, okTexto: 'Adicionar à despensa'
+    });
+    if (!qtd) return;
     mudarEstoque(p.id, qtd);
     showToast(p.nome + ': ' + (atual + qtd) + ' em casa.');
   }
@@ -759,18 +845,18 @@ const DespenseiApp = (function () {
   }
 
   // Adicionar à lista, sugerindo a quantidade da última compra.
-  function adicionarComoDesejo(idProduto) {
+  async function adicionarComoDesejo(idProduto) {
     const p = produto(idProduto);
     if (!p) return;
     if (p.emListaManual) { showToast(p.nome + ' já está na lista de compras.'); return; }
-    const sugestao = qtdUltimaCompra(p) || '';
-    const valor = window.prompt(
-      `Quantidade desejada de "${p.nome}"${sugestao ? ' (última vez você comprou ' + sugestao + ')' : ''}:`,
-      sugestao || '1'
-    );
-    if (valor === null) return;
-    const qtd = parseInt(valor, 10);
-    colocarNaLista(p, isNaN(qtd) || qtd <= 0 ? null : qtd);
+    const sugestao = qtdUltimaCompra(p);
+    const qtd = await dialogo({
+      tipo: 'quantidade', icone: '📋', titulo: p.nome,
+      mensagem: 'Quantas unidades você quer comprar?' + (sugestao ? ` Na última compra foram ${sugestao}.` : ''),
+      valor: sugestao || 1, okTexto: 'Adicionar à lista'
+    });
+    if (!qtd) return;
+    colocarNaLista(p, qtd);
   }
 
   function alternarLista(idProduto) {
@@ -1003,9 +1089,10 @@ const DespenseiApp = (function () {
   }
 
   async function promptNovoEstabelecimento() {
-    const nome = window.prompt('Nome do novo estabelecimento:');
-    if (!nome || !nome.trim()) return;
-    await criarEstabelecimento(nome.trim(), true);
+    const nome = await dialogo({ tipo: 'texto', icone: '📍', titulo: 'Novo estabelecimento',
+      placeholder: 'Ex: Supermercado Bahamas', okTexto: 'Adicionar' });
+    if (!nome) return;
+    await criarEstabelecimento(nome, true);
   }
 
   async function adicionarEstabelecimentoForm() {
@@ -1284,7 +1371,9 @@ const DespenseiApp = (function () {
   async function excluirProdutoEmEdicao() {
     const p = produto(idProdutoEmEdicao);
     if (!p) return;
-    if (!confirm(`Excluir "${p.nome}" do catálogo?\n\nEle sai da despensa, da lista e do carrinho. O histórico de compras já feitas continua guardado.`)) return;
+    if (!await dialogo({ titulo: `Excluir "${p.nome}"?`,
+      mensagem: 'Ele sai do catálogo, da despensa, da lista e do carrinho. O histórico das compras já feitas continua guardado.',
+      okTexto: 'Excluir', perigo: true })) return;
 
     showLoader();
     try {
@@ -1327,7 +1416,9 @@ const DespenseiApp = (function () {
     if (!categoria) { showToast('Escolha a categoria.', 'erro'); return; }
 
     const parecido = APP.produtos.find(x => !x.avulso && normalizar(x.nome) === normalizar(nome));
-    if (parecido && !confirm(`Já existe um produto chamado "${parecido.nome}". Cadastrar outro com o mesmo nome?`)) return;
+    if (parecido && !await dialogo({ titulo: 'Produto repetido', icone: '⚠️',
+      mensagem: `Já existe um produto chamado "${parecido.nome}". Cadastrar outro com o mesmo nome?`,
+      okTexto: 'Cadastrar mesmo assim' })) return;
 
     showLoader();
     try {
@@ -1384,9 +1475,8 @@ const DespenseiApp = (function () {
   }
 
   async function renomearCategoria(nome) {
-    const valor = window.prompt(`Novo nome para a categoria "${nome}":`, nome);
-    if (valor === null) return;
-    const novo = valor.trim();
+    const novo = await dialogo({ tipo: 'texto', icone: '✏️', titulo: 'Renomear categoria',
+      mensagem: `Novo nome para "${nome}":`, valor: nome, okTexto: 'Renomear' });
     if (!novo || novo === nome) return;
 
     showLoader();
@@ -1403,11 +1493,12 @@ const DespenseiApp = (function () {
     }
   }
 
-  function excluirCategoria(nome) {
+  async function excluirCategoria(nome) {
     if (APP.categorias.length <= 1) { showToast('É preciso ter pelo menos uma categoria.', 'erro'); return; }
     const qtd = APP.produtos.filter(p => !p.avulso && p.categoria === nome).length;
     if (!qtd) {
-      if (confirm(`Excluir a categoria "${nome}"?`)) executarExclusaoCategoria(nome, null);
+      if (await dialogo({ titulo: `Excluir a categoria "${nome}"?`, mensagem: 'Ela não tem nenhum produto.',
+        okTexto: 'Excluir', perigo: true })) executarExclusaoCategoria(nome, null);
       return;
     }
     categoriaParaExcluir = nome;
@@ -1522,7 +1613,10 @@ const DespenseiApp = (function () {
     renomearCategoria,
     excluirCategoria,
     fecharModalExcluirCategoria,
-    confirmarExcluirCategoria
+    confirmarExcluirCategoria,
+    dialogo,
+    fecharDialogo,
+    ajustarQtdDialogo
   };
 })();
 

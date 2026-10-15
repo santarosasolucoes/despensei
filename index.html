@@ -55,6 +55,12 @@
     details > summary { list-style: none; }
     details > summary::-webkit-details-marker { display: none; }
     details[open] .chev { transform: rotate(180deg); }
+    @keyframes dialogo-in { from { opacity:0; transform: translateY(24px) scale(0.98); } to { opacity:1; transform: none; } }
+    #modal-dialogo:not(.hidden) .dialogo-caixa { animation: dialogo-in 0.22s ease-out; }
+    @keyframes tremer { 0%,100% { transform: translateX(0); } 25% { transform: translateX(-6px); } 75% { transform: translateX(6px); } }
+    .dialogo-erro { animation: tremer 0.25s ease-in-out 2; border-color: #c85c3c !important; }
+    #dialogo-qtd-input::-webkit-outer-spin-button, #dialogo-qtd-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+    #dialogo-qtd-input { -moz-appearance: textfield; }
   </style>
 </head>
 <body class="min-h-screen text-sand-900">
@@ -536,6 +542,39 @@
           onkeydown="if(event.key==='Enter')DespenseiBarcode.usarDigitado()"
           class="flex-1 min-w-0 rounded-xl px-3 py-2.5 text-sm bg-white text-sand-900 tracking-wider focus:outline-none focus:ring-2 focus:ring-sage-400">
         <button onclick="DespenseiBarcode.usarDigitado()" class="shrink-0 bg-sage-600 text-white font-bold rounded-xl px-4 py-2.5 text-sm active:scale-95">Usar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== JANELA DE DIÁLOGO (confirmações e quantidades) ===================== -->
+  <div id="modal-dialogo" class="hidden fixed inset-0 z-[80] bg-sand-900/45 backdrop-blur-[2px] flex items-end sm:items-center justify-center px-4 pb-6 sm:pb-0"
+    onclick="if(event.target===this)DespenseiApp.fecharDialogo(false)">
+    <div class="dialogo-caixa bg-white rounded-3xl w-full max-w-sm p-5 shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="dialogo-titulo">
+      <div class="flex items-start gap-3">
+        <div id="dialogo-icone" class="shrink-0 w-12 h-12 rounded-2xl bg-sage-100 flex items-center justify-center text-2xl"></div>
+        <div class="min-w-0 flex-1 pt-0.5">
+          <h3 id="dialogo-titulo" class="text-base font-extrabold text-sand-900 leading-snug break-words"></h3>
+          <p id="dialogo-mensagem" class="text-sm text-sand-600 mt-1 leading-snug"></p>
+        </div>
+      </div>
+
+      <div id="dialogo-qtd" class="hidden mt-5 flex items-center justify-center gap-5">
+        <button type="button" onclick="DespenseiApp.ajustarQtdDialogo(-1)" aria-label="Diminuir"
+          class="stepper-btn w-14 h-14 rounded-full bg-sand-100 text-sand-700 font-extrabold text-2xl active:bg-sand-200 flex items-center justify-center">–</button>
+        <input id="dialogo-qtd-input" type="number" inputmode="numeric" min="1"
+          class="w-24 text-center text-4xl font-extrabold text-sage-800 bg-sand-50 border border-sand-200 rounded-2xl py-2 focus:outline-none focus:ring-2 focus:ring-sage-400">
+        <button type="button" onclick="DespenseiApp.ajustarQtdDialogo(1)" aria-label="Aumentar"
+          class="stepper-btn w-14 h-14 rounded-full bg-sage-600 text-white font-extrabold text-2xl active:bg-sage-700 flex items-center justify-center">+</button>
+      </div>
+
+      <input id="dialogo-texto" type="text" autocomplete="off"
+        class="hidden mt-4 w-full border border-sand-200 rounded-xl px-3 py-3 text-sm bg-sand-50 focus:outline-none focus:ring-2 focus:ring-sage-400">
+
+      <div class="flex gap-2 mt-6">
+        <button id="dialogo-cancelar" type="button" onclick="DespenseiApp.fecharDialogo(false)"
+          class="flex-1 bg-sand-100 text-sand-700 font-bold rounded-2xl py-3 text-sm active:bg-sand-200 transition">Cancelar</button>
+        <button id="dialogo-ok" type="button" onclick="DespenseiApp.fecharDialogo(true)"
+          class="flex-1 bg-sage-600 text-white font-extrabold rounded-2xl py-3 text-sm active:scale-[0.98] transition">Confirmar</button>
       </div>
     </div>
   </div>

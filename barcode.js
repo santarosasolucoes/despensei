@@ -165,12 +165,15 @@ const DespenseiBarcode = (function () {
   }
 
   // Código digitado à mão (ou quando a câmera não consegue ler).
-  function usarDigitado() {
+  async function usarDigitado() {
     const campo = document.getElementById('scanner-digitado');
     const codigo = campo.value.replace(/\D/g, '');
     if (!codigo) { campo.focus(); return; }
-    if (!codigoValido(codigo) &&
-        !confirm('O código ' + codigo + ' não parece um código de barras de produto (o último dígito não confere). Confira os números.\n\nUsar mesmo assim?')) {
+    if (!codigoValido(codigo) && !await DespenseiApp.dialogo({
+      titulo: 'Confira o código', icone: '⚠️',
+      mensagem: 'O código ' + codigo + ' não parece um código de barras de produto (o último dígito não confere). Confira os números digitados.',
+      okTexto: 'Usar mesmo assim', cancelarTexto: 'Corrigir'
+    })) {
       campo.focus();
       return;
     }
