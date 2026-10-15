@@ -14,5 +14,5 @@ const DESPENSEI_CONFIG = {
   PONTE_URL: 'https://script.google.com/macros/s/AKfycbyymP9fz14iAYSh9kVoXbr39myA8keM_pMv3ud3m9mxWwGRvdDMxkekkzHUVUNx4bCtLw/exec',
 
   // Mude a cada publicação (junto com CACHE_NAME em sw.js).
-  VERSAO: '3.1.2'
+  VERSAO: '3.1.3'
 };

@@ -527,22 +527,28 @@
 
   <!-- ===================== MODAL LEITOR DE CÓDIGO DE BARRAS ===================== -->
   <div id="modal-scanner" class="hidden fixed inset-0 z-[60] bg-black flex flex-col">
-    <div class="flex items-center justify-between p-4">
+    <div class="flex items-center justify-between px-4 py-3">
       <span class="text-white font-bold text-sm">Código de barras</span>
-      <div class="flex items-center gap-2">
+      <div class="flex items-center gap-1">
+        <button id="scanner-trocar" onclick="DespenseiBarcode.trocarCamera()" class="hidden text-white text-xs font-bold bg-white/15 rounded-lg px-2.5 py-1.5" aria-label="Trocar lente">🔄 Lente</button>
         <button id="scanner-lanterna" onclick="DespenseiBarcode.alternarLanterna()" class="hidden text-white text-lg leading-none px-2" aria-label="Lanterna">🔦</button>
         <button onclick="DespenseiBarcode.parar()" class="text-white text-2xl leading-none px-2" aria-label="Fechar">✕</button>
       </div>
     </div>
-    <div class="relative flex-1 min-h-0">
+    <div class="relative flex-1 min-h-0" onclick="DespenseiBarcode.focar()">
       <video id="scanner-video" class="absolute inset-0 w-full h-full" style="object-fit:cover;" playsinline autoplay muted></video>
       <div class="absolute inset-0 flex items-center justify-center pointer-events-none">
-        <div class="w-4/5 max-w-sm h-28 border-2 border-white/90 rounded-xl" style="box-shadow:0 0 0 9999px rgba(0,0,0,0.35);"></div>
+        <div id="scanner-guia" class="w-4/5 max-w-sm h-32 border-2 border-white/90 rounded-xl" style="box-shadow:0 0 0 9999px rgba(0,0,0,0.35);"></div>
       </div>
     </div>
-    <p id="scanner-status" class="text-white/80 text-xs text-center px-4 pt-3"></p>
+    <p id="scanner-status" class="text-white/85 text-xs text-center px-4 pt-3"></p>
+    <div class="px-4 pt-3 flex gap-2">
+      <button id="scanner-aovivo" onclick="DespenseiBarcode.retomar()" class="hidden flex-1 bg-white/15 text-white font-bold rounded-xl py-3 text-sm active:scale-[0.98]">🎥 Ler ao vivo</button>
+      <button onclick="DespenseiBarcode.tirarFoto()" class="flex-1 bg-white text-sand-900 font-extrabold rounded-xl py-3 text-sm active:scale-[0.98]">📸 Tirar foto do código</button>
+      <input id="scanner-foto" type="file" accept="image/*" capture="environment" class="hidden" onchange="DespenseiBarcode.aoEscolherFoto(this)">
+    </div>
     <div class="p-4 pb-6">
-      <p class="text-white/70 text-[11px] mb-1.5">Não leu? Digite os números que aparecem embaixo das barras:</p>
+      <p class="text-white/70 text-[11px] mb-1.5">Ou digite os números que aparecem embaixo das barras:</p>
       <div class="flex gap-2">
         <input id="scanner-digitado" type="text" inputmode="numeric" autocomplete="off" placeholder="Ex: 7891234567895"
           onkeydown="if(event.key==='Enter')DespenseiBarcode.usarDigitado()"
