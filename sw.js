@@ -8,7 +8,7 @@
 // Apps Script NUNCA passam pelo cache.
 
 // v3 (Supabase): mude junto com VERSAO em config.js a cada publicação.
-const CACHE_NAME = 'despensei-v3.1.1';
+const CACHE_NAME = 'despensei-v3.1.2';
 const APP_SHELL = [
   './',
   './index.html',

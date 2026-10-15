@@ -244,6 +244,10 @@
         </div>
 
         <div id="carrinho-form" class="bg-white rounded-2xl p-3.5 mb-4 shadow-sm border border-sand-100 space-y-3 scroll-mt-20">
+          <div id="carrinho-editando" class="hidden -mx-3.5 -mt-3.5 mb-1 px-3.5 py-2.5 rounded-t-2xl bg-amber-50 border-b border-amber-200 flex items-center justify-between gap-2">
+            <span class="text-xs font-extrabold text-amber-800">✏️ Editando item do carrinho</span>
+            <button onclick="DespenseiApp.cancelarEdicaoCarrinho()" class="shrink-0 text-xs font-bold text-amber-800 underline">Cancelar edição</button>
+          </div>
           <div class="flex items-center justify-between">
             <label class="block text-xs font-bold text-sand-700">Produto</label>
             <button onclick="DespenseiApp.abrirScanner()" class="text-xs font-bold text-sage-700 bg-sage-50 rounded-lg px-2.5 py-1.5 active:scale-95 transition">📷 Código de barras</button>
@@ -281,7 +285,7 @@
               <label class="block text-xs font-bold text-sand-700 mb-1">Qtd.</label>
               <div class="flex items-center border border-sand-200 rounded-xl bg-sand-50 overflow-hidden">
                 <button onclick="DespenseiApp.ajustarQtdForm(-1)" class="stepper-btn w-9 h-10 text-sage-700 font-bold text-lg active:bg-sage-100">–</button>
-                <input id="input-qtd" type="number" min="1" value="1" class="w-full text-center bg-transparent text-sm font-bold focus:outline-none">
+                <input id="input-qtd" type="number" inputmode="numeric" min="1" value="1" oninput="DespenseiApp.atualizarSubtotal()" class="w-full text-center bg-transparent text-sm font-bold focus:outline-none">
                 <button onclick="DespenseiApp.ajustarQtdForm(1)" class="stepper-btn w-9 h-10 text-sage-700 font-bold text-lg active:bg-sage-100">+</button>
               </div>
             </div>
@@ -293,7 +297,9 @@
               class="w-full border border-sand-200 rounded-xl px-3 py-2.5 text-sm bg-sand-50 focus:outline-none focus:ring-2 focus:ring-sage-400">
           </div>
 
-          <button onclick="DespenseiApp.adicionarItemCarrinho()" class="w-full bg-sage-600 hover:bg-sage-700 text-white font-bold rounded-xl py-3 text-sm active:scale-[0.98] transition">
+          <p id="carrinho-subtotal" class="text-sm text-sand-700 text-right"></p>
+
+          <button id="btn-adicionar-carrinho" onclick="DespenseiApp.adicionarItemCarrinho()" class="w-full bg-sage-600 hover:bg-sage-700 text-white font-bold rounded-xl py-3 text-sm active:scale-[0.98] transition">
             + Adicionar ao Carrinho
           </button>
           </div>

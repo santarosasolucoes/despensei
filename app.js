@@ -30,6 +30,7 @@ const DespenseiApp = (function () {
 
   let codigoBarrasPendente = null;   // código lido que ainda não pertence a nenhum produto
   let idSelecionadoCarrinho = null;  // produto escolhido no formulário do carrinho
+  let idLinhaEmEdicao = null;        // item do carrinho sendo editado no formulário
   let idProdutoEmEdicao = null;
   let categoriaParaExcluir = null;
   let aoCriarProduto = null;         // o que fazer depois de cadastrar pelo modal "Novo produto"
@@ -932,6 +933,7 @@ const DespenseiApp = (function () {
     if (!buscarProdutoCompravel(idProduto)) return;
     switchTab('carrinho');
     codigoBarrasPendente = null;
+    idLinhaEmEdicao = null;
     selecionarProdutoCarrinho(idProduto);
   }
 
@@ -986,6 +988,7 @@ const DespenseiApp = (function () {
   function renderProdutoEscolhido() {
     const p = buscarProdutoCompravel(idSelecionadoCarrinho);
     if (!p) idSelecionadoCarrinho = null;
+    if (idLinhaEmEdicao && !APP.carrinho.some(i => String(i.idLinha) === String(idLinhaEmEdicao))) idLinhaEmEdicao = null;
     document.getElementById('carrinho-escolhido').classList.toggle('hidden', !p);
     document.getElementById('carrinho-campos').classList.toggle('hidden', !p);
     document.getElementById('seletor-carrinho').classList.toggle('hidden', !!p);
@@ -993,6 +996,12 @@ const DespenseiApp = (function () {
       document.getElementById('carrinho-escolhido-nome').textContent = p.nome;
       document.getElementById('carrinho-escolhido-cat').textContent = icone(p.categoria) + ' ' + p.categoria;
     }
+    const editando = !!idLinhaEmEdicao;
+    document.getElementById('carrinho-editando').classList.toggle('hidden', !editando);
+    document.getElementById('carrinho-form').classList.toggle('ring-2', editando);
+    document.getElementById('carrinho-form').classList.toggle('ring-amber-300', editando);
+    document.getElementById('btn-adicionar-carrinho').textContent = editando ? '✓ Salvar alteração' : '+ Adicionar ao Carrinho';
+    atualizarSubtotal();
   }
 
   function trocarProdutoCarrinho() {
@@ -1004,11 +1013,14 @@ const DespenseiApp = (function () {
     if (input) input.focus();
   }
 
+  function lerPrecoForm() { return parseFloat(String(document.getElementById('input-preco').value).replace(',', '.')); }
+
   // Variação de preço em relação à última compra.
   function atualizarIndicadorPreco() {
+    atualizarSubtotal();
     const p = buscarProdutoCompravel(idSelecionadoCarrinho);
     const el = document.getElementById('indicador-preco');
-    const precoDigitado = parseFloat(document.getElementById('input-preco').value);
+    const precoDigitado = lerPrecoForm();
 
     if (!p || !p.referenciaPreco || isNaN(precoDigitado)) {
       el.textContent = '';
@@ -1026,25 +1038,24 @@ const DespenseiApp = (function () {
     el.className = 'text-[11px] mt-1 font-semibold ' + (subiu ? 'text-terracotta-600' : 'text-sage-700');
   }
 
+  // Subtotal do item no formulário, recalculado a cada mudança de preço/quantidade.
+  function atualizarSubtotal() {
+    const el = document.getElementById('carrinho-subtotal');
+    const preco = lerPrecoForm();
+    const qtd = parseInt(document.getElementById('input-qtd').value, 10);
+    if (!idSelecionadoCarrinho || isNaN(preco) || isNaN(qtd) || qtd <= 0) { el.textContent = ''; return; }
+    el.innerHTML = `${qtd} × ${formatMoeda(preco)} = <b class="text-sage-700 text-base">${formatMoeda(qtd * preco)}</b>`;
+  }
+
   function ajustarQtdForm(delta) {
     const input = document.getElementById('input-qtd');
     input.value = Math.max(1, (parseInt(input.value, 10) || 1) + delta);
+    atualizarSubtotal();
   }
 
-  // Cada toque em "Adicionar" vira um lançamento próprio no carrinho, com seu
-  // preço e quantidade — nunca é somado a outro lançamento.
-  function adicionarItemCarrinho() {
-    const p = buscarProdutoCompravel(idSelecionadoCarrinho);
-    const preco = parseFloat(String(document.getElementById('input-preco').value).replace(',', '.'));
-    const qtd = parseInt(document.getElementById('input-qtd').value, 10) || 1;
-    const marca = document.getElementById('input-marca').value.trim();
-
-    if (!p) { showToast('Escolha um produto.', 'erro'); return; }
-    if (isNaN(preco) || preco < 0) { showToast('Informe um preço válido.', 'erro'); return; }
-
-    APP.carrinho.push({ idLinha: novoIdLinha(), idProduto: p.id, nome: p.nome, quantidade: qtd, precoUnitario: preco, marca: marca });
-
+  function limparFormCarrinho() {
     idSelecionadoCarrinho = null;
+    idLinhaEmEdicao = null;
     codigoBarrasPendente = null;
     document.getElementById('input-preco').value = '';
     document.getElementById('input-qtd').value = 1;
@@ -1052,14 +1063,58 @@ const DespenseiApp = (function () {
     document.getElementById('indicador-preco').textContent = '';
     renderProdutoEscolhido();
     renderCodigoPendente();
+  }
 
+  // Cada toque em "Adicionar" vira um lançamento próprio no carrinho, com seu
+  // preço e quantidade — nunca é somado a outro lançamento. Em modo de edição,
+  // o mesmo botão atualiza o lançamento escolhido (e o total é recalculado).
+  function adicionarItemCarrinho() {
+    const p = buscarProdutoCompravel(idSelecionadoCarrinho);
+    const preco = lerPrecoForm();
+    const qtd = parseInt(document.getElementById('input-qtd').value, 10);
+    const marca = document.getElementById('input-marca').value.trim();
+
+    if (!p) { showToast('Escolha um produto.', 'erro'); return; }
+    if (isNaN(preco) || preco < 0) { showToast('Informe um preço válido.', 'erro'); return; }
+    if (isNaN(qtd) || qtd <= 0) { showToast('Informe uma quantidade maior que zero.', 'erro'); return; }
+
+    const linha = idLinhaEmEdicao && APP.carrinho.find(i => String(i.idLinha) === String(idLinhaEmEdicao));
+    if (linha) {
+      Object.assign(linha, { idProduto: p.id, nome: p.nome, quantidade: qtd, precoUnitario: preco, marca: marca });
+    } else {
+      APP.carrinho.push({ idLinha: novoIdLinha(), idProduto: p.id, nome: p.nome, quantidade: qtd, precoUnitario: preco, marca: marca });
+    }
+
+    limparFormCarrinho();
     salvarCarrinho();
     renderCarrinho();
     atualizarBadges();
-    showToast(p.nome + ' adicionado!');
+    showToast(linha ? p.nome + ' atualizado!' : p.nome + ' adicionado!');
+  }
+
+  // Leva um item já lançado de volta ao formulário para alterar produto,
+  // quantidade, preço ou marca.
+  function editarItemCarrinho(idLinha) {
+    const linha = APP.carrinho.find(i => String(i.idLinha) === String(idLinha));
+    if (!linha) return;
+    if (!buscarProdutoCompravel(linha.idProduto)) { showToast('Esse produto não existe mais. Remova o item do carrinho.', 'erro'); return; }
+    idLinhaEmEdicao = String(linha.idLinha);
+    codigoBarrasPendente = null;
+    selecionarProdutoCarrinho(linha.idProduto);
+    document.getElementById('input-qtd').value = linha.quantidade;
+    document.getElementById('input-preco').value = Number(linha.precoUnitario).toFixed(2);
+    document.getElementById('input-marca').value = linha.marca || '';
+    atualizarIndicadorPreco();
+    renderCarrinho();
+  }
+
+  function cancelarEdicaoCarrinho() {
+    limparFormCarrinho();
+    renderCarrinho();
   }
 
   function removerItemCarrinho(idLinha) {
+    if (String(idLinha) === String(idLinhaEmEdicao)) limparFormCarrinho();
     APP.carrinho = APP.carrinho.filter(i => String(i.idLinha) !== String(idLinha));
     salvarCarrinho();
     renderCarrinho();
@@ -1077,15 +1132,19 @@ const DespenseiApp = (function () {
       return;
     }
 
-    container.innerHTML = APP.carrinho.map(i => `
-      <div class="bg-white rounded-2xl p-3 shadow-sm border border-sand-100 flex items-center gap-3">
-        <div class="flex-1 min-w-0">
+    container.innerHTML = `<p class="text-[11px] text-sand-500 px-1">Toque num item para alterar quantidade, preço ou produto.</p>` +
+      APP.carrinho.map(i => {
+        const editando = String(i.idLinha) === String(idLinhaEmEdicao);
+        return `
+      <div class="bg-white rounded-2xl p-3 shadow-sm border ${editando ? 'border-amber-300 ring-2 ring-amber-200' : 'border-sand-100'} flex items-center gap-2">
+        <button type="button" onclick="DespenseiApp.editarItemCarrinho('${i.idLinha}')" class="flex-1 min-w-0 text-left active:opacity-70">
           <p class="font-bold text-sm text-sand-900">${escapeHtml(i.nome)}${i.marca ? ` <span class="text-sand-400 font-normal">(${escapeHtml(i.marca)})</span>` : ''}</p>
-          <p class="text-[11px] text-sand-500">${i.quantidade} × ${formatMoeda(i.precoUnitario)} = <b class="text-sage-700">${formatMoeda(i.quantidade * i.precoUnitario)}</b></p>
-        </div>
+          <p class="text-[11px] text-sand-500">${i.quantidade} × ${formatMoeda(i.precoUnitario)} = <b class="text-sage-700">${formatMoeda(i.quantidade * i.precoUnitario)}</b>${editando ? ' <span class="text-amber-700 font-bold">· editando</span>' : ''}</p>
+        </button>
+        <button onclick="DespenseiApp.editarItemCarrinho('${i.idLinha}')" class="shrink-0 w-9 h-9 rounded-full bg-sand-50 active:bg-sand-100 flex items-center justify-center" aria-label="Editar item">✏️</button>
         <button onclick="DespenseiApp.removerItemCarrinho('${i.idLinha}')" class="shrink-0 w-9 h-9 rounded-full bg-terracotta-50 text-terracotta-600 font-bold active:bg-terracotta-100 flex items-center justify-center" aria-label="Remover do carrinho">✕</button>
-      </div>
-    `).join('');
+      </div>`;
+      }).join('');
   }
 
   async function promptNovoEstabelecimento() {
@@ -1157,6 +1216,7 @@ const DespenseiApp = (function () {
 
     APP.carrinho = [];
     salvarCarrinho();
+    limparFormCarrinho();
     mudouLocal();
     DespenseiApi.enfileirar('finalizar_compra', { p_local_id: Number(idLocal), p_itens: itens },
       'Compra em ' + nomeLocal + ' (' + formatMoeda(valorTotal) + ')');
@@ -1592,6 +1652,9 @@ const DespenseiApp = (function () {
     ajustarQtdForm,
     adicionarItemCarrinho,
     removerItemCarrinho,
+    editarItemCarrinho,
+    cancelarEdicaoCarrinho,
+    atualizarSubtotal,
     promptNovoEstabelecimento,
     adicionarEstabelecimentoForm,
     finalizarCompra,
